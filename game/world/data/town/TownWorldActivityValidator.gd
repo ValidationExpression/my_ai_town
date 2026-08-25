@@ -1777,6 +1777,16 @@ static func _validate_occupations(
 		)
 		if allowed_tags.is_empty():
 			errors.append("%s 至少需要一个 allowed activity tag" % occupation_id)
+		_validate_staffing_profile(
+			occupation_id,
+			occupation.get("staffingProfile"),
+			_occupation_physical_capacity(
+				occupation,
+				activities_by_id,
+				slots_by_id,
+			),
+			errors,
+		)
 		if (
 			workplace_policy != "none"
 			and required_capabilities.is_empty()
@@ -1912,6 +1922,108 @@ static func _occupation_has_activity_chain(
 				continue
 		return true
 	return false
+
+
+static func _validate_staffing_profile(
+	occupation_id: String,
+	value: Variant,
+	physical_capacity: int,
+	errors: PackedStringArray,
+) -> void:
+	if not value is Dictionary:
+		errors.append("%s.staffingProfile 必须为对象" % occupation_id)
+		return
+	var profile := value as Dictionary
+	var actual_keys: Array[String] = []
+	for key_value: Variant in profile:
+		actual_keys.append(String(key_value))
+	actual_keys.sort()
+	var expected_keys: Array[String] = [
+		"leaderPolicy",
+		"maximumHeadcount",
+		"minimumHeadcount",
+		"recommendedHeadcount",
+		"serviceCapacityPerWorker",
+	]
+	if actual_keys != expected_keys:
+		errors.append(
+			"%s.staffingProfile 字段必须精确为 %s"
+			% [occupation_id, "/".join(expected_keys)]
+		)
+		return
+	for field: String in [
+		"minimumHeadcount",
+		"recommendedHeadcount",
+		"maximumHeadcount",
+		"serviceCapacityPerWorker",
+	]:
+		if not _is_integer_number(profile.get(field)):
+			errors.append("%s.staffingProfile.%s 必须为整数" % [occupation_id, field])
+			return
+	var minimum := int(profile.get("minimumHeadcount"))
+	var recommended := int(profile.get("recommendedHeadcount"))
+	var maximum := int(profile.get("maximumHeadcount"))
+	var per_worker := int(profile.get("serviceCapacityPerWorker"))
+	if minimum < 0 or minimum > recommended:
+		errors.append("%s.staffingProfile.minimumHeadcount 非法" % occupation_id)
+	if recommended < 1 or recommended > maximum:
+		errors.append("%s.staffingProfile.recommendedHeadcount 非法" % occupation_id)
+	if maximum < 1 or maximum > physical_capacity:
+		errors.append(
+			"%s.staffingProfile.maximumHeadcount 超过地图工作容量 %d"
+			% [occupation_id, physical_capacity]
+		)
+	if per_worker < 1:
+		errors.append(
+			"%s.staffingProfile.serviceCapacityPerWorker 必须大于零"
+			% occupation_id
+		)
+	if String(profile.get("leaderPolicy", "")) not in [
+		"single_primary",
+		"shared",
+	]:
+		errors.append("%s.staffingProfile.leaderPolicy 非法" % occupation_id)
+
+
+static func _occupation_physical_capacity(
+	occupation: Dictionary,
+	activities_by_id: Dictionary,
+	slots_by_id: Dictionary,
+) -> int:
+	var fixed_work_area_ids := occupation.get("fixedWorkAreaIds", []) as Array
+	if not fixed_work_area_ids.is_empty():
+		return fixed_work_area_ids.size()
+	var allowed_tags := occupation.get("allowedActivityTags", []) as Array
+	var primary_workplace := String(
+		occupation.get("primaryWorkplacePlace", ""),
+	)
+	var positions: Dictionary = {}
+	for slot_value: Variant in slots_by_id.values():
+		if not slot_value is Dictionary:
+			continue
+		var slot := slot_value as Dictionary
+		var activity := activities_by_id.get(
+			String(slot.get("activityId", "")),
+			{},
+		) as Dictionary
+		if (
+			String(slot.get("role", "")) != "worker"
+			or String(slot.get("placeName", "")) != primary_workplace
+			or not _arrays_intersect(
+				activity.get("tags", []) as Array,
+				allowed_tags,
+			)
+		):
+			continue
+		for member_value: Variant in slot.get("memberAnchors", []) as Array:
+			if not member_value is Dictionary:
+				continue
+			var position := (
+				(member_value as Dictionary).get("position", []) as Array
+			)
+			if position.size() == 2:
+				positions["%s,%s" % [position[0], position[1]]] = true
+	return maxi(positions.size(), 1)
 
 
 static func _validate_default_social_supported_chains(

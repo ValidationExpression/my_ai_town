@@ -756,7 +756,7 @@ func _build_header() -> void:
 	_summary_grid.add_theme_constant_override("h_separation", 12)
 	_summary_grid.add_theme_constant_override("v_separation", 8)
 	header_stack.add_child(_summary_grid)
-	_completion_label = _summary_badge("完成 0/15", "success", "CompletionSummary")
+	_completion_label = _summary_badge("完成 0/0", "success", "CompletionSummary")
 	_invalid_label = _summary_badge("失效 0", "warning", "InvalidSummary")
 	_unassigned_label = _summary_badge("未分配 0", "normal", "UnassignedSummary")
 	_summary_grid.add_child(_completion_label.get_parent())

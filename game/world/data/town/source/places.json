@@ -92,7 +92,7 @@
       "spaceId": "indoor_flower_cafe",
       "summary": "带玻璃花房的咖啡馆，居民可以在这里工作、喝东西、休息和聊天。",
       "serviceProfile": {
-        "capacity": 1,
+        "capacity": 3,
         "helperActivityId": "activity_cafe_receive_guests",
         "requestActivityIds": ["activity_cafe_order"],
         "unstaffedVisitorActivityIds": ["activity_cafe_rest"]
@@ -109,7 +109,7 @@
       "spaceId": "indoor_library",
       "summary": "收藏和借阅书籍的公共建筑，居民可以在这里工作、阅读、写作和查资料。",
       "serviceProfile": {
-        "capacity": 1,
+        "capacity": 3,
         "helperActivityId": "activity_library_staff_checkout",
         "requestActivityIds": ["activity_library_checkout"],
         "unstaffedVisitorActivityIds": [
@@ -141,7 +141,7 @@
       "spaceId": "indoor_clinic",
       "summary": "为镇民看病和取药的公共诊所，医护居民可以在这里工作。",
       "serviceProfile": {
-        "capacity": 1,
+        "capacity": 2,
         "helperActivityId": "activity_clinic_receive_patient",
         "requestActivityIds": [
           "activity_clinic_consult",
@@ -193,7 +193,7 @@
       "spaceId": "indoor_workshop",
       "summary": "制作和修理器物的工坊，居民可以在这里经营铺面和从事手工工作。",
       "serviceProfile": {
-        "capacity": 1,
+        "capacity": 4,
         "helperActivityId": "activity_workshop_craft_item",
         "requestActivityIds": ["activity_workshop_handoff_repair"],
         "unstaffedVisitorActivityIds": []
@@ -221,6 +221,7 @@
     {
       "name": "北街一号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_01",
       "summary": "北街西段的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -231,6 +232,7 @@
     {
       "name": "北街二号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_02",
       "summary": "北街中段的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -241,6 +243,7 @@
     {
       "name": "北街三号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_03",
       "summary": "北街东段的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -251,6 +254,7 @@
     {
       "name": "西街一号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_15",
       "summary": "西街北端靠近山坡的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -261,6 +265,7 @@
     {
       "name": "西街二号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_04",
       "summary": "西街外侧的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -271,6 +276,7 @@
     {
       "name": "西街三号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_05",
       "summary": "西街上段的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -281,6 +287,7 @@
     {
       "name": "西街四号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_06",
       "summary": "西街上段靠近中心道路的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -291,6 +298,7 @@
     {
       "name": "西街五号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_07",
       "summary": "西街下段的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -301,6 +309,7 @@
     {
       "name": "西街六号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_08",
       "summary": "西街下段靠近中心道路的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -311,6 +320,7 @@
     {
       "name": "南街一号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_09",
       "summary": "南街西段的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -321,6 +331,7 @@
     {
       "name": "南街二号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_10",
       "summary": "南街西段靠近镇口道路的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -331,6 +342,7 @@
     {
       "name": "南街三号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_11",
       "summary": "南街下段西侧的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -341,6 +353,7 @@
     {
       "name": "南街四号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_12",
       "summary": "南街下段靠近南入口的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -351,6 +364,7 @@
     {
       "name": "南街五号住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_13",
       "summary": "南街下段东侧的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {
@@ -361,6 +375,7 @@
     {
       "name": "东南街住宅",
       "type": "住家",
+      "residentCapacity": 2,
       "spaceId": "home_14",
       "summary": "社区花园东侧、通往渔港道路旁的一套独立住宅，可分配给居民居住和休息。",
       "capabilities": {

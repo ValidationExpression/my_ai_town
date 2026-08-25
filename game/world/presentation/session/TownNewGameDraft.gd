@@ -5,7 +5,7 @@ extends RefCounted
 const SCHEMA_VERSION := TownSaveSchemaRegistry.NEW_GAME_DRAFT_SCHEMA_VERSION
 const SOURCE_SCOPE := "resident_selection"
 const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
-const HOME_SLOT_COUNT := POPULATION_RULES.MAX_RESIDENT_COUNT
+const WORLD_DATA_PATH := "res://world/data/town/town_world.json"
 
 
 static func validate(draft: Dictionary) -> Dictionary:
@@ -16,13 +16,15 @@ static func validate(draft: Dictionary) -> Dictionary:
 		errors.append(_error("sourceScope", "SESSION_DRAFT_SOURCE_INVALID"))
 	if int(draft.get("draftRevision", 0)) < 1:
 		errors.append(_error("draftRevision", "SESSION_DRAFT_REVISION_INVALID"))
+	var world_data := _load_world_data()
+	var home_capacities := POPULATION_RULES.home_space_capacities(world_data)
 	var expected_spaces := home_space_ids()
 	var slots_variant: Variant = draft.get("slots", [])
 	if not (slots_variant is Array):
 		errors.append(_error("slots", "SESSION_DRAFT_SLOTS_INVALID"))
 		slots_variant = []
 	var slots: Array = slots_variant
-	var seen_space_ids: Dictionary = {}
+	var occupants_by_space_id: Dictionary = {}
 	var seen_resident_ids: Dictionary = {}
 	for index in range(slots.size()):
 		if not (slots[index] is Dictionary):
@@ -35,10 +37,19 @@ static func validate(draft: Dictionary) -> Dictionary:
 			errors.append(_error("slots[%d].spaceId" % index, "SESSION_HOME_SPACE_REQUIRED"))
 		elif not expected_spaces.has(space_id):
 			errors.append(_error("slots[%d].spaceId" % index, "SESSION_HOME_SPACE_UNKNOWN"))
-		elif seen_space_ids.has(space_id):
-			errors.append(_error("slots[%d].spaceId" % index, "SESSION_HOME_SPACE_DUPLICATED"))
 		else:
-			seen_space_ids[space_id] = true
+			var occupants := int(occupants_by_space_id.get(space_id, 0)) + 1
+			occupants_by_space_id[space_id] = occupants
+			if occupants > int(home_capacities.get(space_id, 0)):
+				errors.append(_error(
+					"slots[%d].spaceId" % index,
+					"SESSION_HOME_SPACE_CAPACITY_EXCEEDED",
+					{
+						"spaceId": space_id,
+						"capacity": int(home_capacities.get(space_id, 0)),
+						"actual": occupants,
+					},
+				))
 		if resident_id.is_empty():
 			errors.append(_error("slots[%d].residentId" % index, "SESSION_RESIDENT_ID_REQUIRED"))
 		elif seen_resident_ids.has(resident_id):
@@ -65,13 +76,20 @@ static func validate(draft: Dictionary) -> Dictionary:
 					"slots[%d].llmBinding.modelId" % index,
 					"SESSION_LLM_MODEL_REQUIRED",
 				))
-	if not POPULATION_RULES.supports_resident_count(slots.size()):
+	if not POPULATION_RULES.supports_resident_count_for_world(
+		slots.size(),
+		world_data,
+	):
 		errors.append(_error(
 			"slots",
 			"SESSION_RESIDENT_COUNT_OUT_OF_RANGE",
 			{
 				"minimum": POPULATION_RULES.MIN_RESIDENT_COUNT,
-				"maximum": POPULATION_RULES.MAX_RESIDENT_COUNT,
+				"maximum": mini(
+					POPULATION_RULES.MAX_RESIDENT_COUNT,
+					POPULATION_RULES.housing_capacity(world_data),
+				),
+				"designMaximum": POPULATION_RULES.MAX_RESIDENT_COUNT,
 				"actual": slots.size(),
 			},
 		))
@@ -85,6 +103,7 @@ static func validate(draft: Dictionary) -> Dictionary:
 		"minimumResidentCount": POPULATION_RULES.MIN_RESIDENT_COUNT,
 		"defaultResidentCount": POPULATION_RULES.DEFAULT_RESIDENT_COUNT,
 		"maximumResidentCount": POPULATION_RULES.MAX_RESIDENT_COUNT,
+		"housingCapacity": POPULATION_RULES.housing_capacity(world_data),
 		"expectedSpaceIds": expected_spaces,
 	}
 
@@ -93,7 +112,13 @@ static func model_bindings(draft: Dictionary) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var slots: Array = (draft.get("slots", []) as Array).duplicate(true)
 	slots.sort_custom(func(a: Variant, b: Variant) -> bool:
-		return String((a as Dictionary).get("spaceId", "")) < String((b as Dictionary).get("spaceId", ""))
+		var left := a as Dictionary
+		var right := b as Dictionary
+		var left_space := String(left.get("spaceId", ""))
+		var right_space := String(right.get("spaceId", ""))
+		if left_space == right_space:
+			return String(left.get("residentId", "")) < String(right.get("residentId", ""))
+		return left_space < right_space
 	)
 	for slot_variant in slots:
 		var slot := slot_variant as Dictionary
@@ -106,10 +131,20 @@ static func model_bindings(draft: Dictionary) -> Array[Dictionary]:
 
 
 static func home_space_ids() -> Array[String]:
-	var result: Array[String] = []
-	for index in range(1, HOME_SLOT_COUNT + 1):
-		result.append("home_%02d" % index)
-	return result
+	var world_data := _load_world_data()
+	return POPULATION_RULES.allocated_home_space_ids(
+		world_data,
+		POPULATION_RULES.housing_capacity(world_data),
+	)
+
+
+static func _load_world_data() -> Dictionary:
+	if not FileAccess.file_exists(WORLD_DATA_PATH):
+		return {}
+	var parsed: Variant = JSON.parse_string(
+		FileAccess.get_file_as_string(WORLD_DATA_PATH)
+	)
+	return parsed as Dictionary if parsed is Dictionary else {}
 
 
 static func _error(path: String, code: String, meta: Dictionary = {}) -> Dictionary:

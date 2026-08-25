@@ -11,6 +11,7 @@ const TRACE_EVIDENCE := preload(
 const OC_PROFILES: Array[Dictionary] = [
 	{
 		"name": "岚烬", "gender": "女", "age": 31,
+		"occupationId": "occupation_town_manager",
 		"desire": "守住自己的荣誉，并让宿敌赫弥为旧日背叛付出代价。",
 		"personality": "暗黑骑士，骄傲、克制但绝不退让；赫弥是她公开承认的宿敌。遇到挑衅会先当面对质，矛盾升级时敢于攻击。",
 		"speech": "言语简短冷峻，对赫弥直呼其名，不说空泛客套话。",
@@ -18,6 +19,7 @@ const OC_PROFILES: Array[Dictionary] = [
 	},
 	{
 		"name": "赫弥", "gender": "女", "age": 29,
+		"occupationId": "occupation_clinic_practitioner",
 		"desire": "作为吸血鬼隐住真实身份，同时彻底压过宿敌岚烬。",
 		"personality": "吸血鬼，优雅、敏锐、记仇；岚烬是她多年的宿敌。平时隐藏身份，被岚烬逼问或冒犯时会反击。",
 		"speech": "语气温柔但带讥讽，愤怒时仍不失礼。",
@@ -25,6 +27,7 @@ const OC_PROFILES: Array[Dictionary] = [
 	},
 	{
 		"name": "阿莽", "gender": "男", "age": 25,
+		"occupationId": "occupation_dining_operator",
 		"desire": "哪里有热闹和打架就往哪里凑，证明自己最能打。",
 		"personality": "只会打架的莽撞家伙，好斗、冲动、爱凑热闹；看见争吵会靠近起哄，乱斗时很可能加入，但不会凭空仇视所有人。",
 		"speech": "大嗓门、直来直去，常用短句挑衅或叫好。",
@@ -32,6 +35,7 @@ const OC_PROFILES: Array[Dictionary] = [
 	},
 	{
 		"name": "塞拉", "gender": "女", "age": 34,
+		"occupationId": "occupation_musician",
 		"desire": "找出镇上的怪物，保护普通居民免受吸血鬼伤害。",
 		"personality": "猎魔人，谨慎、执着、善于观察；对吸血鬼线索高度敏感，但在没有事实前会调查而不是无故攻击。",
 		"speech": "冷静追问细节，说话像在核对证据。",
@@ -39,6 +43,7 @@ const OC_PROFILES: Array[Dictionary] = [
 	},
 	{
 		"name": "伊诺", "gender": "男", "age": 38,
+		"occupationId": "occupation_fisher",
 		"desire": "保护镇民、化解仇恨，在危险真正发生时挡在弱者前面。",
 		"personality": "牧师，温和、坚定、有同情心；会劝和争执，也会在冲突中保护他人。",
 		"speech": "温暖朴素，先听完再劝，不讲长篇大道理。",
@@ -46,6 +51,7 @@ const OC_PROFILES: Array[Dictionary] = [
 	},
 	{
 		"name": "洛汐", "gender": "男", "age": 27,
+		"occupationId": "occupation_postal_worker",
 		"desire": "让不同的人都觉得自己是他最特别的朋友，同时维持轻松自在的生活。",
 		"personality": "海王，外向、体贴、擅长暧昧社交；会自然接近多人，但不公开承认自己的多线关系。",
 		"speech": "亲切俏皮，会针对不同的人说具体而贴心的话。",
@@ -134,10 +140,34 @@ func _run() -> void:
 	var selection_vm := host.get("_resident_selection_vm") as Dictionary
 	var selection_data := selection_vm.get("data", {}) as Dictionary
 	var roster: Array[String] = custom_ids.duplicate()
-	for value: Variant in selection_data.get("recommended_resident_ids", []) as Array:
+	var occupation_by_resident_id: Dictionary = {}
+	var custom_occupation_labels: Dictionary = {}
+	for resident_value: Variant in selection_data.get("residents", []) as Array:
+		if not resident_value is Dictionary:
+			continue
+		var resident := resident_value as Dictionary
+		var resident_id := String(resident.get("resident_id", ""))
+		var occupation_label := String(resident.get("occupation", ""))
+		occupation_by_resident_id[resident_id] = occupation_label
+		if custom_ids.has(resident_id) and not occupation_label.is_empty():
+			custom_occupation_labels[occupation_label] = true
+	var roster_candidates: Array = (
+		selection_data.get("recommended_resident_ids", []) as Array
+	).duplicate()
+	for resident_value: Variant in selection_data.get("residents", []) as Array:
+		if resident_value is Dictionary:
+			roster_candidates.append(
+				String((resident_value as Dictionary).get("resident_id", ""))
+			)
+	for value: Variant in roster_candidates:
 		var resident_id := String(value)
-		if not roster.has(resident_id) and roster.size() < 15:
-			roster.append(resident_id)
+		if roster.has(resident_id) or roster.size() >= 15:
+			continue
+		if custom_occupation_labels.has(
+			String(occupation_by_resident_id.get(resident_id, ""))
+		):
+			continue
+		roster.append(resident_id)
 	selection_data["selected_resident_ids"] = roster
 	host.call("_update_confirmation_payload", selection_data)
 	host.call("_advance_resident_selection_revision")

@@ -56,7 +56,6 @@ static func validate(config: Dictionary, world_data: Dictionary) -> Array[String
 	var residents := residents_value as Array if residents_value is Array else []
 	var resident_ids := {}
 	var resident_names: Array[String] = []
-	var homes_by_resident_id := {}
 	var residents_by_home := {}
 	for index in residents.size():
 		if typeof(residents[index]) != TYPE_DICTIONARY:
@@ -102,31 +101,37 @@ static func validate(config: Dictionary, world_data: Dictionary) -> Array[String
 		_validate_social_state(name, social_state, places, errors)
 		var home := String(social_state.get("home", "")).strip_edges() if social_state.get("home") is String else ""
 		if not resident_id.is_empty() and not home.is_empty():
-			homes_by_resident_id[resident_id] = home
-			if residents_by_home.has(home):
-				errors.append("住家被多个居民占用：%s" % home)
-			else:
-				residents_by_home[home] = resident_id
+			var home_residents: Array = residents_by_home.get(home, []) as Array
+			home_residents.append(resident_id)
+			residents_by_home[home] = home_residents
+			var home_place := places.get(home, {}) as Dictionary
+			var home_capacity := int(home_place.get(
+				"residentCapacity",
+				POPULATION_RULES.LEGACY_HOME_RESIDENT_CAPACITY,
+			))
+			if home_residents.size() > home_capacity:
+				errors.append(
+					"住家 %s 的入住人数超过容量 %d"
+					% [home, home_capacity]
+				)
 		var world_state_value: Variant = resident.get("worldState")
 		if not world_state_value is Dictionary:
 			errors.append("residents[%d].worldState 必须是对象" % index)
 		else:
 			_validate_world_state(name, world_state_value as Dictionary, world_data, errors)
-	var home_count := 0
-	for place_value: Variant in world_data.get("places", []) as Array:
-		if String((place_value as Dictionary).get("type", "")) == "住家":
-			home_count += 1
-	if not POPULATION_RULES.supports_resident_count(residents.size()):
+	var housing_capacity := POPULATION_RULES.housing_capacity(world_data)
+	if not POPULATION_RULES.supports_resident_count_for_world(
+		residents.size(),
+		world_data,
+	):
 		errors.append(
 			"居民数量必须在 %d～%d 之间，实际为 %d"
 			% [
 				POPULATION_RULES.MIN_RESIDENT_COUNT,
-				mini(POPULATION_RULES.MAX_RESIDENT_COUNT, home_count),
+				housing_capacity,
 				residents.size(),
 			]
 		)
-	elif residents.size() > home_count:
-		errors.append("居民数量不能超过住家槽位数量 %d" % home_count)
 	if config.has("agentSoulProfiles"):
 		_validate_soul_profiles(
 			config.get("agentSoulProfiles"),
@@ -140,7 +145,6 @@ static func validate(config: Dictionary, world_data: Dictionary) -> Array[String
 		owners_value as Dictionary if owners_value is Dictionary else {},
 		places,
 		resident_ids,
-		homes_by_resident_id,
 		residents_by_home,
 		errors,
 	)
@@ -498,7 +502,6 @@ static func _validate_owners(
 	owners: Dictionary,
 	places: Dictionary,
 	resident_ids: Dictionary,
-	homes_by_resident_id: Dictionary,
 	residents_by_home: Dictionary,
 	errors: Array[String],
 ) -> void:
@@ -516,7 +519,7 @@ static func _validate_owners(
 		if place_type == "住家" and residents_by_home.has(place_name) and (
 			not owners.has(place_name)
 			or String(owners.get(place_name, ""))
-			!= String(residents_by_home.get(place_name, ""))
+			!= String((residents_by_home.get(place_name, []) as Array).front())
 		):
 			errors.append("已入住的住家缺少合法居民归属：%s" % place_name)
 		elif place_type == "住家" and not residents_by_home.has(place_name) and owners.has(place_name):
@@ -530,11 +533,6 @@ static func _validate_owners(
 	for place_name_value: Variant in owners:
 		if not places.has(String(place_name_value)):
 			errors.append("归属配置引用未知地点：%s" % place_name_value)
-	for resident_id_value: Variant in homes_by_resident_id:
-		var resident_id := String(resident_id_value)
-		var home_name := String(homes_by_resident_id[resident_id])
-		if owners.get(home_name) != resident_id:
-			errors.append("居民 %s 必须归属自己的住家 %s" % [resident_id, home_name])
 
 
 static func _membership_for_state(state: Dictionary, world_data: Dictionary) -> Dictionary:

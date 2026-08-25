@@ -2,6 +2,7 @@ class_name BuildingResidentMarker
 extends Node2D
 
 const POINTER_INPUT := preload("res://ui/mobile/PointerInput.gd")
+const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
 
 
 signal resident_activated(resident_id: String, resident_name: String)
@@ -10,7 +11,7 @@ signal expanded_changed(place_name: String, expanded: bool)
 
 const INPUT_COLLISION_LAYER := 1 << 15
 const COLLAPSED_LIMIT := 3
-const MAX_RESIDENT_COUNT := 15
+const MAX_RESIDENT_COUNT := POPULATION_RULES.MAX_RESIDENT_COUNT
 const STANDARD_GRID_COLUMNS := 4
 const MAX_GRID_COLUMNS := 5
 const CELL_WIDTH := 48.0
@@ -229,7 +230,10 @@ func debug_asset_snapshot() -> Dictionary:
 			else Vector2.ZERO
 		),
 		"markerSize": _marker_size,
-		"runtimeTextureScaled": false,
+		"runtimeTextureScaled": (
+			_active_shell_texture != null
+			and _active_shell_texture.get_size() != _marker_size
+		),
 		"minimumScreenSizeLocked": true,
 		"cameraZoom": _camera_zoom,
 		"contentScreenScale": (
@@ -349,6 +353,12 @@ func _build_glass_asset(has_overflow: bool) -> void:
 	shell.texture = _active_shell_texture
 	shell.centered = true
 	shell.position = Vector2.ZERO
+	var source_size := _active_shell_texture.get_size()
+	if source_size.x > 0.0 and source_size.y > 0.0:
+		shell.scale = Vector2(
+			_marker_size.x / source_size.x,
+			_marker_size.y / source_size.y,
+		)
 	shell.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_content_root.add_child(shell)
 

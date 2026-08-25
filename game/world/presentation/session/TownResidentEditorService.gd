@@ -79,7 +79,10 @@ func configure(
 	context: Dictionary = {},
 ) -> Dictionary:
 	_reset()
-	var catalog_validation := CATALOG.validate(catalog) as Dictionary
+	var catalog_validation := CATALOG.validate_session_catalog(
+		catalog,
+		world_data,
+	) as Dictionary
 	if not bool(catalog_validation.get("ok", false)):
 		return _configuration_failure(
 			String(catalog_validation.get("errorCode", "SESSION_CATALOG_INVALID")),
@@ -352,12 +355,17 @@ func _assign_home(slot_id: String, home_space_id: String) -> Dictionary:
 		return _success(false)
 	var candidate_entries := _entries.duplicate(true)
 	var swap_index := -1
+	var target_occupancy := 0
 	for other_index in candidate_entries.size():
 		if String(candidate_entries[other_index].get("homeSpaceId", "")) == home_space_id:
-			swap_index = other_index
-			break
+			target_occupancy += 1
+			if swap_index < 0:
+				swap_index = other_index
 	candidate_entries[index]["homeSpaceId"] = home_space_id
-	if swap_index >= 0:
+	var target_capacity := int(
+		(_home_by_space[home_space_id] as Dictionary).get("residentCapacity", 1),
+	)
+	if target_occupancy >= target_capacity and swap_index >= 0:
 		candidate_entries[swap_index]["homeSpaceId"] = current_home
 	return _commit_candidate(candidate_entries)
 
@@ -385,17 +393,28 @@ func _restore_default(slot_id: String) -> Dictionary:
 	if _entries[index] == default_entry:
 		return _success(false)
 	var candidate_entries := _entries.duplicate(true)
-	# Preserve another slot's current home by swapping, so the 15-home invariant
-	# remains true when this resident is restored after a home reassignment.
+	# 目标住宅满员时交换住处；尚有容量时直接恢复，不把“负责人”误当成
+	# 唯一住户。
 	var default_home := String(default_entry.get("homeSpaceId", ""))
 	var current_home := String(candidate_entries[index].get("homeSpaceId", ""))
+	var default_home_occupancy := 0
+	var swap_index := -1
 	for other_index in candidate_entries.size():
 		if (
 			other_index != index
 			and String(candidate_entries[other_index].get("homeSpaceId", "")) == default_home
 		):
-			candidate_entries[other_index]["homeSpaceId"] = current_home
-			break
+			default_home_occupancy += 1
+			if swap_index < 0:
+				swap_index = other_index
+	var default_home_capacity := int(
+		(_home_by_space.get(default_home, {}) as Dictionary).get(
+			"residentCapacity",
+			1,
+		),
+	)
+	if default_home_occupancy >= default_home_capacity and swap_index >= 0:
+		candidate_entries[swap_index]["homeSpaceId"] = current_home
 	candidate_entries[index] = default_entry
 	return _commit_candidate(candidate_entries)
 
@@ -645,7 +664,7 @@ func _validate_entries(entries: Array[Dictionary]) -> Dictionary:
 	var issues: Array[Dictionary] = []
 	var issues_by_slot: Dictionary = {}
 	var field_issues_by_slot: Dictionary = {}
-	var seen_homes: Dictionary = {}
+	var home_occupancy: Dictionary = {}
 	var seen_names: Dictionary = {}
 	var valid_slots: Dictionary = {}
 	for entry in entries:
@@ -687,11 +706,23 @@ func _validate_entries(entries: Array[Dictionary]) -> Dictionary:
 		if not _home_by_space.has(home_space_id):
 			_add_field_issue(field_issues, "social.homeSpaceId", "RESIDENT_EDITOR_HOME_UNKNOWN")
 			slot_codes.append("RESIDENT_EDITOR_HOME_UNKNOWN")
-		elif seen_homes.has(home_space_id):
-			_add_field_issue(field_issues, "social.homeSpaceId", "RESIDENT_EDITOR_HOME_DUPLICATED")
-			slot_codes.append("RESIDENT_EDITOR_HOME_DUPLICATED")
 		else:
-			seen_homes[home_space_id] = slot_id
+			home_occupancy[home_space_id] = int(
+				home_occupancy.get(home_space_id, 0),
+			) + 1
+			var home_capacity := int(
+				(_home_by_space[home_space_id] as Dictionary).get(
+					"residentCapacity",
+					1,
+				),
+			)
+			if int(home_occupancy[home_space_id]) > home_capacity:
+				_add_field_issue(
+					field_issues,
+					"social.homeSpaceId",
+					"RESIDENT_EDITOR_HOME_CAPACITY_EXCEEDED",
+				)
+				slot_codes.append("RESIDENT_EDITOR_HOME_CAPACITY_EXCEEDED")
 		if not _occupation_by_id.has(String(occupation.get("id", ""))):
 			_add_field_issue(field_issues, "social.occupationId", "RESIDENT_EDITOR_OCCUPATION_UNKNOWN")
 			slot_codes.append("RESIDENT_EDITOR_OCCUPATION_UNKNOWN")
@@ -765,6 +796,7 @@ func _build_options() -> void:
 			var home := {
 				"spaceId": String(place.get("spaceId", "")),
 				"label": place_name,
+				"residentCapacity": int(place.get("residentCapacity", 1)),
 			}
 			_home_options.append(home)
 			_home_by_space[String(home.get("spaceId", ""))] = home
@@ -931,12 +963,20 @@ func _home_option_snapshot() -> Array[Dictionary]:
 	for home in _home_options:
 		var option := home.duplicate(true)
 		var assigned_slot_id := ""
+		var assigned_slot_ids: Array[String] = []
 		for entry in _entries:
 			if String(entry.get("homeSpaceId", "")) == String(home.get("spaceId", "")):
-				assigned_slot_id = String(entry.get("slotId", ""))
-				break
+				var slot_id := String(entry.get("slotId", ""))
+				assigned_slot_ids.append(slot_id)
+				if assigned_slot_id.is_empty():
+					assigned_slot_id = slot_id
 		option["assignedSlotId"] = assigned_slot_id
-		option["available"] = assigned_slot_id.is_empty() or assigned_slot_id == _selected_slot_id
+		option["assignedSlotIds"] = assigned_slot_ids
+		option["occupancy"] = assigned_slot_ids.size()
+		option["available"] = (
+			assigned_slot_ids.has(_selected_slot_id)
+			or assigned_slot_ids.size() < int(home.get("residentCapacity", 1))
+		)
 		result.append(option)
 	return result
 

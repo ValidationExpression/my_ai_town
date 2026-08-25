@@ -690,7 +690,7 @@ func _build_completion_modal() -> void:
 
 func _render(view_model: Dictionary) -> void:
 	var completed := int(_data.get("completedCount", 0))
-	var total := int(_data.get("residentCount", 15))
+	var total := int(_data.get("residentCount", 0))
 	var invalid := int(_data.get("invalidCount", 0))
 	var unassigned := int(_data.get("unassignedCount", 0))
 	var batch_mode := String(_data.get("mode", "single")) == "batch"

@@ -7,6 +7,9 @@ const UiNodeRetirement := preload("res://ui/common/AiTownUiNodeRetirement.gd")
 const UiViewModel := preload("res://ui/common/AiTownUiViewModel.gd")
 const MOBILE_UI_PROFILE := preload("res://ui/mobile/MobileUiProfile.gd")
 const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
+const NEW_GAME_DRAFT := preload(
+	"res://world/presentation/session/TownNewGameDraft.gd"
+)
 
 
 signal resident_selection_requested(resident_id: String, should_select: bool, revision: int)
@@ -135,7 +138,9 @@ var _data_source := "placeholder"
 var _resident_catalog_status := "placeholder"
 var _internal_playtest := false
 var _confirmation_payload: Dictionary = {}
+var _housing_warning := ""
 var _staffing_warnings: Array[Dictionary] = []
+var _staffing_blockers: Array[Dictionary] = []
 var _draft_revision_floor := 0
 var _operation: Dictionary = {}
 var _error_value: Variant = null
@@ -503,6 +508,8 @@ func _consume_view_model(snapshot: Dictionary) -> bool:
 		"selection_minimum",
 		"selection_default",
 		"selection_limit",
+		"housing_capacity",
+		"housing_warning",
 		"connection_label",
 		"candidate_pool_revision",
 		"focused_resident_id",
@@ -531,13 +538,18 @@ func _consume_view_model(snapshot: Dictionary) -> bool:
 	_selection_minimum = int(data.get("selection_minimum", MIN_SESSION_RESIDENT_COUNT))
 	_selection_default = int(data.get("selection_default", DEFAULT_SESSION_RESIDENT_COUNT))
 	_selection_limit = int(data.get("selection_limit", MAX_SESSION_RESIDENT_COUNT))
+	var housing_capacity := int(data.get("housing_capacity", 0))
 	if (
 		_selection_minimum != MIN_SESSION_RESIDENT_COUNT
-		or _selection_default != DEFAULT_SESSION_RESIDENT_COUNT
-		or _selection_limit != MAX_SESSION_RESIDENT_COUNT
+		or _selection_default < _selection_minimum
+		or _selection_default > DEFAULT_SESSION_RESIDENT_COUNT
+		or _selection_limit < _selection_default
+		or _selection_limit > MAX_SESSION_RESIDENT_COUNT
+		or housing_capacity < _selection_limit
 	):
 		push_error("居民选择页人口规则与正式规则不一致。")
 		return false
+	_housing_warning = String(data.get("housing_warning", "")).strip_edges()
 	_connection_label = str(data.get("connection_label", "开发占位 · 未连接真实 AI"))
 	_candidate_pool_revision = int(data.get("candidate_pool_revision", 0))
 	_formal_ready = bool(data.get("formalReady", false))
@@ -555,6 +567,14 @@ func _consume_view_model(snapshot: Dictionary) -> bool:
 			if warning_value is Dictionary:
 				_staffing_warnings.append(
 					(warning_value as Dictionary).duplicate(true),
+				)
+	_staffing_blockers.clear()
+	var staffing_blockers_value: Variant = data.get("staffing_blockers", [])
+	if staffing_blockers_value is Array:
+		for blocker_value: Variant in staffing_blockers_value as Array:
+			if blocker_value is Dictionary:
+				_staffing_blockers.append(
+					(blocker_value as Dictionary).duplicate(true),
 				)
 	_draft_revision_floor = maxi(
 		_draft_revision_floor,
@@ -1384,7 +1404,7 @@ func _build_footer() -> void:
 		_count_label,
 		true,
 		1,
-		"已选 15 / 16 · 适合当前小镇规模"
+		"已选 15 / 30 · 推荐人数 15 · 正式上限 30"
 	)
 
 	_recommended_button = _button(
@@ -1850,17 +1870,40 @@ func _refresh_operation() -> void:
 	if capture_status in ["idle", "loading", "success", "rejected", "error", "disabled"]:
 		status = capture_status
 	if status == "idle":
+		var show_staffing_blocker := (
+			not _delete_mode_active
+			and POPULATION_RULES.supports_resident_count(_selected_by_id.size())
+			and not _staffing_blockers.is_empty()
+		)
+		var show_housing_warning := (
+			not _delete_mode_active
+			and not _housing_warning.is_empty()
+		)
 		var show_staffing_warning := (
 			not _delete_mode_active
 			and POPULATION_RULES.supports_resident_count(_selected_by_id.size())
 			and not _staffing_warnings.is_empty()
 		)
-		_notice_label.text = (
-			_staffing_warning_summary() if show_staffing_warning else ""
+		var population_cost_warning := _population_cost_warning()
+		var show_population_cost := (
+			not _delete_mode_active
+			and not population_cost_warning.is_empty()
 		)
-		_notice_label.visible = show_staffing_warning
+		var notice_parts: Array[String] = []
+		if show_staffing_blocker:
+			notice_parts.append(_staffing_blocker_summary())
+		else:
+			if show_housing_warning:
+				notice_parts.append(_housing_warning)
+			if show_staffing_warning:
+				notice_parts.append(_staffing_warning_summary())
+			if show_population_cost:
+				notice_parts.append(population_cost_warning)
+		_notice_label.text = "\n".join(notice_parts)
+		_notice_label.visible = not notice_parts.is_empty()
 		_subtitle.visible = (
-			_layout_mode == LayoutMode.DESKTOP and not show_staffing_warning
+			_layout_mode == LayoutMode.DESKTOP
+			and notice_parts.is_empty()
 		)
 		return
 	var message := str(_operation.get("message", ""))
@@ -2131,7 +2174,8 @@ func _refresh_count() -> void:
 	_recommended_text.text = "推荐组合" if _layout_mode == LayoutMode.DESKTOP else "推荐"
 	_clear_text.text = "清空"
 	_count_label.text = (
-		"已选 %d 人 · 可入镇 %d～%d 人" % [count, _selection_minimum, _selection_limit]
+		"已选 %d 人 · 推荐 %d 人 · 上限 %d 人"
+		% [count, _selection_default, _selection_limit]
 		if _layout_mode == LayoutMode.DESKTOP
 		else "已选 %d / %d" % [count, _selection_limit]
 	)
@@ -2147,6 +2191,7 @@ func _refresh_count() -> void:
 	var can_submit_session := (
 		_submission_is_authorized()
 		and POPULATION_RULES.supports_resident_count(count)
+		and _staffing_blockers.is_empty()
 		and bool(payload_validation.get("passed", false))
 		and _payload_matches_selection(current_draft)
 	)
@@ -2162,12 +2207,28 @@ func _refresh_count() -> void:
 		_confirm_button.tooltip_text = "当前会话尚未就绪，不能进入居民模型选择"
 	elif count < _selection_minimum:
 		_confirm_button.tooltip_text = "请至少选择 %d 位居民" % _selection_minimum
+	elif not _staffing_blockers.is_empty():
+		_confirm_button.tooltip_text = _staffing_blocker_summary()
 	elif not bool(payload_validation.get("passed", false)):
 		_confirm_button.tooltip_text = "当前居民名单草稿不完整"
+	elif not _housing_warning.is_empty():
+		_confirm_button.tooltip_text = _housing_warning
 	elif not _staffing_warnings.is_empty():
 		_confirm_button.tooltip_text = _staffing_warning_summary()
+	elif not _population_cost_warning().is_empty():
+		_confirm_button.tooltip_text = _population_cost_warning()
 	else:
 		_confirm_button.tooltip_text = "保留本局名单并进入居民模型选择"
+
+
+func _population_cost_warning() -> String:
+	var count := _selected_by_id.size()
+	if count <= _selection_default:
+		return ""
+	return (
+		"当前选择 %d 人。人数超过推荐的 %d 人后，模型请求、寻路、存档大小和设备负担都会增加。"
+		% [count, _selection_default]
+	)
 
 
 func _staffing_warning_summary() -> String:
@@ -2196,6 +2257,21 @@ func _staffing_warning_summary() -> String:
 		"职业空缺不会阻止开局。%s%s"
 		% ["；".join(details), omitted_suffix]
 	)
+
+
+func _staffing_blocker_summary() -> String:
+	var details: Array[String] = []
+	for blocker: Dictionary in _staffing_blockers:
+		details.append(
+			"%s %d/%d 人" % [
+				String(blocker.get("occupationLabel", "未命名职业")),
+				int(blocker.get("selectedHeadcount", 0)),
+				int(blocker.get("maximumHeadcount", 0)),
+			]
+		)
+		if details.size() >= 3:
+			break
+	return "工作地点容量不足，请调整职业：%s" % "；".join(details)
 
 
 func _open_custom_resident_entry() -> void:
@@ -2342,6 +2418,9 @@ func _confirm_roster() -> void:
 			_selection_limit,
 		])
 		return
+	if not _staffing_blockers.is_empty():
+		_show_notice(_staffing_blocker_summary())
+		return
 	var roster_draft := _build_current_roster_draft()
 	var validation := _validate_confirmation_payload(roster_draft)
 	if not bool(validation.get("passed", false)):
@@ -2360,13 +2439,14 @@ func _build_current_roster_draft() -> Dictionary:
 	if not _confirmation_payload.is_empty():
 		return _confirmation_payload.duplicate(true)
 	var slots: Array[Dictionary] = []
+	var allocated_home_space_ids := NEW_GAME_DRAFT.home_space_ids()
 	for resident: Dictionary in _residents:
 		var resident_id := str(resident.get("resident_id", ""))
 		if resident_id.is_empty() or not _selected_by_id.has(resident_id):
 			continue
 		slots.append({
 			"residentId": resident_id,
-			"spaceId": "home_%02d" % (slots.size() + 1),
+			"spaceId": allocated_home_space_ids[slots.size()],
 		})
 	return {
 		"schemaVersion": 1,
@@ -2458,7 +2538,7 @@ func _validate_confirmation_payload(payload: Dictionary) -> Dictionary:
 	var slots := slots_value as Array
 	if not POPULATION_RULES.supports_resident_count(slots.size()):
 		failures.append("slot_count")
-	var homes: Dictionary = {}
+	var home_occupancy: Dictionary = {}
 	var residents: Dictionary = {}
 	for slot_value: Variant in slots:
 		if not slot_value is Dictionary:
@@ -2470,23 +2550,30 @@ func _validate_confirmation_payload(payload: Dictionary) -> Dictionary:
 		if resident_id.is_empty() or residents.has(resident_id):
 			failures.append("resident_id_unique")
 		residents[resident_id] = true
-		if space_id.is_empty() or homes.has(space_id):
-			failures.append("space_id_unique")
-		homes[space_id] = true
+		if space_id.is_empty():
+			failures.append("space_id_required")
+		else:
+			home_occupancy[space_id] = int(home_occupancy.get(space_id, 0)) + 1
 		if slot.has("llmBinding"):
 			failures.append("resident_selection_must_not_assign_llm_binding")
-	for home_index in range(1, slots.size() + 1):
-		var expected_home := "home_%02d" % home_index
-		if not homes.has(expected_home):
-			failures.append("missing_" + expected_home)
+	var expected_home_occupancy: Dictionary = {}
+	var allocated_home_space_ids := NEW_GAME_DRAFT.home_space_ids()
+	if allocated_home_space_ids.size() < slots.size():
+		failures.append("housing_capacity")
+	else:
+		for index in slots.size():
+			var expected_home := allocated_home_space_ids[index]
+			expected_home_occupancy[expected_home] = (
+				int(expected_home_occupancy.get(expected_home, 0)) + 1
+			)
+		if home_occupancy != expected_home_occupancy:
+			failures.append("home_allocation")
 	return {
 		"passed": failures.is_empty(),
 		"slotCount": slots.size(),
 		"uniqueResidentCount": residents.size(),
-		"uniqueSpaceCount": homes.size(),
-		"expectedHomesComplete": failures.filter(
-			func(value: String) -> bool: return value.begins_with("missing_")
-		).is_empty(),
+		"uniqueSpaceCount": home_occupancy.size(),
+		"expectedHomesComplete": not failures.has("home_allocation"),
 		"failures": failures,
 	}
 

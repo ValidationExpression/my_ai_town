@@ -1084,12 +1084,12 @@
       "activity_definitions.json": "11394713d90ceaa7a57868099d8b63307b68f7a89227c070da6b35f8e007fb48",
       "activity_slots.json": "9ec2e66c45e7bf0d48da4ddaadc4598fa8d2d5d31fc7ef107f2615bc65c5324f",
       "indoor_prop_authoring.json": "cddf2092f875e4f7012b449785fd1d901e69fc6f2ec129f11bb5b236c8897e73",
-      "occupation_catalog.json": "eddae46da2c289df21ee8ec93b1042d36c22db8211a1bc51a0addd3e65c139af",
-      "places.json": "206a6a2f998767a7297e34fb55abf00c375b8ee63763324f2dfe734871275a6b",
+      "occupation_catalog.json": "891975598dcc293820dba07b35232f133f64b5cb9ebb8ec92aaf54cb728f7d94",
+      "places.json": "644748ecbe6c49594e61454c444cb1948c5ce1722f5ea394632fa4bb9c78b86d",
       "props.json": "9834cda492c108bbd7d7e087a1cf2e31449365265ddb66fd435e5b8891c3506f",
       "schedule_templates.json": "c813a58fb45813c52230c398181b2bc2ebd5aa9a1f6b76cb2c5d7c0708c50d63"
     },
-    "sourceFingerprint": "44815398b66700e89ebd014692af12d17c754bac2746d026f6796b35872b0cfd",
+    "sourceFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
     "sourceWorldId": "town",
     "staticReferencesValidated": true,
     "status": "formal_executable",
@@ -144838,6 +144838,13 @@
         "plant.study"
       ],
       "scheduleTemplateId": "schedule_day_garden",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 1.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "research.observe",
         "research.verify",
@@ -144867,6 +144874,13 @@
         "drink.prepare"
       ],
       "scheduleTemplateId": "schedule_day_service",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 3.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "cafe.order",
         "cafe.production",
@@ -144898,6 +144912,13 @@
         "care.medicine"
       ],
       "scheduleTemplateId": "schedule_day_care",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 2.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "care.consult",
         "care.examine",
@@ -144932,6 +144953,13 @@
         "craft.assembly"
       ],
       "scheduleTemplateId": "schedule_day_craft",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 4.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "craft.production",
         "craft.repair",
@@ -144973,6 +145001,13 @@
         "logistics.inventory"
       ],
       "scheduleTemplateId": "schedule_day_delivery",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 3.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "cargo.pickup",
         "cargo.transport",
@@ -145008,6 +145043,13 @@
         "baking.prepare"
       ],
       "scheduleTemplateId": "schedule_day_food_service",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 4.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "food.production",
         "food.service",
@@ -145037,6 +145079,13 @@
         "fishing.harvest"
       ],
       "scheduleTemplateId": "schedule_day_harbor",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 1.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "fishing.harvest",
         "cargo.direct_handoff"
@@ -145068,6 +145117,13 @@
         "retail.flowers"
       ],
       "scheduleTemplateId": "schedule_day_retail",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 2.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "retail.receive",
         "retail.arrange",
@@ -145101,6 +145157,13 @@
         "garden.care"
       ],
       "scheduleTemplateId": "schedule_day_garden",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 1.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "garden.care",
         "garden.harvest",
@@ -145133,6 +145196,13 @@
         "retail.goods"
       ],
       "scheduleTemplateId": "schedule_day_retail",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 3.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "retail.receive",
         "retail.stock",
@@ -145161,6 +145231,13 @@
         "library.shelve"
       ],
       "scheduleTemplateId": "schedule_day_library",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 3.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "library.loan",
         "library.return",
@@ -145193,6 +145270,13 @@
         "music.perform"
       ],
       "scheduleTemplateId": "schedule_day_arts",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 1.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "music.rehearse",
         "music.perform"
@@ -145218,6 +145302,13 @@
         "mail.delivery"
       ],
       "scheduleTemplateId": "schedule_day_delivery",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 1.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "message.accept",
         "message.sort",
@@ -145254,6 +145345,13 @@
         "civic.records"
       ],
       "scheduleTemplateId": "schedule_day_civic",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 2.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "civic.service",
         "bulletin.publish",
@@ -145284,6 +145382,13 @@
         "logistics.inventory"
       ],
       "scheduleTemplateId": "schedule_day_logistics",
+      "staffingProfile": {
+        "leaderPolicy": "single_primary",
+        "maximumHeadcount": 4.0,
+        "minimumHeadcount": 1.0,
+        "recommendedHeadcount": 1.0,
+        "serviceCapacityPerWorker": 1.0
+      },
       "taskCapabilities": [
         "inventory.receive",
         "inventory.store",
@@ -209538,6 +209643,7 @@
       "perceptionRegionIds": [
         "region_portal_home_14_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_14",
       "summary": "社区花园东侧、通往渔港道路旁的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209592,6 +209698,7 @@
       "perceptionRegionIds": [
         "region_portal_home_01_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_01",
       "summary": "北街西段的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209604,6 +209711,7 @@
       "perceptionRegionIds": [
         "region_portal_home_03_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_03",
       "summary": "北街东段的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209616,6 +209724,7 @@
       "perceptionRegionIds": [
         "region_portal_home_02_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_02",
       "summary": "北街中段的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209644,6 +209753,7 @@
       "perceptionRegionIds": [
         "region_portal_home_09_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_09",
       "summary": "南街西段的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209656,6 +209766,7 @@
       "perceptionRegionIds": [
         "region_portal_home_11_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_11",
       "summary": "南街下段西侧的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209668,6 +209779,7 @@
       "perceptionRegionIds": [
         "region_portal_home_10_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_10",
       "summary": "南街西段靠近镇口道路的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209680,6 +209792,7 @@
       "perceptionRegionIds": [
         "region_portal_home_13_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_13",
       "summary": "南街下段东侧的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209692,6 +209805,7 @@
       "perceptionRegionIds": [
         "region_portal_home_12_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_12",
       "summary": "南街下段靠近南入口的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209707,7 +209821,7 @@
         "region_portal_library_entry"
       ],
       "serviceProfile": {
-        "capacity": 1.0,
+        "capacity": 3.0,
         "helperActivityId": "activity_library_staff_checkout",
         "requestActivityIds": [
           "activity_library_checkout"
@@ -209748,7 +209862,7 @@
         "region_portal_workshop_entry"
       ],
       "serviceProfile": {
-        "capacity": 1.0,
+        "capacity": 4.0,
         "helperActivityId": "activity_workshop_craft_item",
         "requestActivityIds": [
           "activity_workshop_handoff_repair"
@@ -209874,7 +209988,7 @@
         "region_portal_cafe_entry"
       ],
       "serviceProfile": {
-        "capacity": 1.0,
+        "capacity": 3.0,
         "helperActivityId": "activity_cafe_receive_guests",
         "requestActivityIds": [
           "activity_cafe_order"
@@ -209895,6 +210009,7 @@
       "perceptionRegionIds": [
         "region_portal_home_15_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_15",
       "summary": "西街北端靠近山坡的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209907,6 +210022,7 @@
       "perceptionRegionIds": [
         "region_portal_home_05_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_05",
       "summary": "西街上段的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209919,6 +210035,7 @@
       "perceptionRegionIds": [
         "region_portal_home_04_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_04",
       "summary": "西街外侧的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209931,6 +210048,7 @@
       "perceptionRegionIds": [
         "region_portal_home_07_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_07",
       "summary": "西街下段的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209943,6 +210061,7 @@
       "perceptionRegionIds": [
         "region_portal_home_08_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_08",
       "summary": "西街下段靠近中心道路的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209955,6 +210074,7 @@
       "perceptionRegionIds": [
         "region_portal_home_06_entry"
       ],
+      "residentCapacity": 2.0,
       "spaceId": "home_06",
       "summary": "西街上段靠近中心道路的一套独立住宅，可分配给居民居住和休息。",
       "type": "住家"
@@ -209969,7 +210089,7 @@
         "region_portal_clinic_entry"
       ],
       "serviceProfile": {
-        "capacity": 1.0,
+        "capacity": 2.0,
         "helperActivityId": "activity_clinic_receive_patient",
         "requestActivityIds": [
           "activity_clinic_consult",

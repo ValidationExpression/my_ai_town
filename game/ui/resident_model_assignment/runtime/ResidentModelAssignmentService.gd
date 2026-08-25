@@ -1081,7 +1081,12 @@ func _validate_initial_draft(draft: Dictionary) -> Dictionary:
 	):
 		return _failure("SESSION_RESIDENT_COUNT_OUT_OF_RANGE")
 	var seen_residents: Dictionary = {}
-	var seen_spaces: Dictionary = {}
+	var allowed_occupancy_by_space: Dictionary = {}
+	for allowed_space_id: String in _expected_home_space_ids():
+		allowed_occupancy_by_space[allowed_space_id] = int(
+			allowed_occupancy_by_space.get(allowed_space_id, 0),
+		) + 1
+	var occupancy_by_space: Dictionary = {}
 	for value: Variant in slots_value as Array:
 		if not value is Dictionary:
 			return _failure("SESSION_DRAFT_SLOT_INVALID")
@@ -1098,12 +1103,17 @@ func _validate_initial_draft(draft: Dictionary) -> Dictionary:
 			return _failure("SESSION_HOME_SPACE_REQUIRED")
 		if not _expected_home_space_ids().has(space_id):
 			return _failure("SESSION_HOME_SPACE_UNKNOWN")
-		if seen_spaces.has(space_id):
-			return _failure("SESSION_HOME_SPACE_DUPLICATED")
+		occupancy_by_space[space_id] = int(
+			occupancy_by_space.get(space_id, 0),
+		) + 1
+		if (
+			int(occupancy_by_space.get(space_id, 0))
+			> int(allowed_occupancy_by_space.get(space_id, 0))
+		):
+			return _failure("SESSION_HOME_SPACE_CAPACITY_EXCEEDED")
 		if slot.has("llmBinding") and not slot.get("llmBinding") is Dictionary:
 			return _failure("SESSION_LLM_BINDING_INVALID")
 		seen_residents[resident_id] = true
-		seen_spaces[space_id] = true
 	return {"ok": true, "errorCode": "", "retryable": false}
 
 
@@ -1230,7 +1240,7 @@ func _error_message(error_code: String) -> String:
 			return "当前模型连接不可用，系统已尝试自动迁移但没有找到可用模型，草稿已保留。"
 		"PROVIDER_HEALTH_UNAVAILABLE", "PROVIDER_HEALTH_QUERY_FAILED", "PROVIDER_HEALTH_SNAPSHOT_INVALID", "PROVIDER_CATALOG_UNAVAILABLE", "PROVIDER_MODEL_CATALOG_INVALID", "PROVIDER_MODEL_CATALOG_DUPLICATED", "PROVIDER_HEALTH_CATALOG_INVALID", "PROVIDER_HEALTH_CATALOG_DUPLICATED", "PROVIDER_FORMAL_RUNTIME_REQUIRED", "LLM_PROVIDER_UNAVAILABLE", "LLM_MODEL_UNAVAILABLE", "LLM_MODEL_UNKNOWN":
 			return "目标 Provider 或模型当前不可用，原绑定与草稿已保留。"
-		"SESSION_DRAFT_SCHEMA_UNSUPPORTED", "SESSION_DRAFT_SOURCE_INVALID", "SESSION_DRAFT_REVISION_INVALID", "SESSION_DRAFT_SLOTS_INVALID", "SESSION_DRAFT_SLOT_INVALID", "SESSION_RESIDENT_COUNT_OUT_OF_RANGE", "SESSION_HOME_SPACE_COUNT_MISMATCH", "SESSION_HOME_SPACE_REQUIRED", "SESSION_HOME_SPACE_UNKNOWN", "SESSION_HOME_SPACE_DUPLICATED", "SESSION_HOME_SPACE_MISSING", "SESSION_RESIDENT_ID_REQUIRED", "SESSION_RESIDENT_ID_UNKNOWN", "SESSION_RESIDENT_ID_DUPLICATED", "SESSION_LLM_BINDING_INVALID":
+		"SESSION_DRAFT_SCHEMA_UNSUPPORTED", "SESSION_DRAFT_SOURCE_INVALID", "SESSION_DRAFT_REVISION_INVALID", "SESSION_DRAFT_SLOTS_INVALID", "SESSION_DRAFT_SLOT_INVALID", "SESSION_RESIDENT_COUNT_OUT_OF_RANGE", "SESSION_HOME_SPACE_COUNT_MISMATCH", "SESSION_HOME_SPACE_REQUIRED", "SESSION_HOME_SPACE_UNKNOWN", "SESSION_HOME_SPACE_DUPLICATED", "SESSION_HOME_SPACE_CAPACITY_EXCEEDED", "SESSION_HOME_SPACE_MISSING", "SESSION_RESIDENT_ID_REQUIRED", "SESSION_RESIDENT_ID_UNKNOWN", "SESSION_RESIDENT_ID_DUPLICATED", "SESSION_LLM_BINDING_INVALID":
 			return "居民选择草稿无效，未进入模型分配；原草稿未被修改。"
 		"RESIDENT_MODEL_ASSIGNMENT_BATCH_EMPTY":
 			return "请先在批量模式选择至少一位居民。"

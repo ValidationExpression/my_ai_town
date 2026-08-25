@@ -48,6 +48,7 @@ class FakeAdapter:
 const CATALOG := preload(
 	"res://world/presentation/session/TownResidentCatalog.gd"
 )
+const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
 const MOVEMENT := preload(
 	"res://world/data/town/TownWorldCharacterMovementQuery.gd"
 )
@@ -96,8 +97,30 @@ func _verify_candidate_catalog(catalog: Dictionary) -> void:
 	)
 	_expect_equal(
 		validation.get("selectionLimit"),
-		15,
-		"validation exposes the 15-home selection limit",
+		POPULATION_RULES.MAX_RESIDENT_COUNT,
+		"validation exposes the formal housing-backed population limit",
+	)
+	_expect_equal(
+		validation.get("housingCapacity"),
+		POPULATION_RULES.MAX_RESIDENT_COUNT,
+		"validation exposes the authored housing capacity separately",
+	)
+	var reduced_housing_world := _read_json(WORLD_DATA_PATH).duplicate(true)
+	for place_value: Variant in reduced_housing_world.get("places", []) as Array:
+		if (
+			place_value is Dictionary
+			and String((place_value as Dictionary).get("type", "")) == "住家"
+		):
+			(place_value as Dictionary)["residentCapacity"] = 1
+	var reduced_validation := CATALOG.validate_against_world(
+		catalog,
+		reduced_housing_world,
+	) as Dictionary
+	_expect(bool(reduced_validation.get("ok", false)), "a legacy one-person-per-home map remains valid")
+	_expect_equal(
+		reduced_validation.get("selectionLimit"),
+		POPULATION_RULES.DEFAULT_RESIDENT_COUNT,
+		"insufficient housing lowers the selectable population before town entry",
 	)
 	_expect_equal(
 		validation.get("appearanceReady"),
@@ -134,8 +157,8 @@ func _verify_world_references(catalog: Dictionary) -> void:
 	home_space_ids.sort()
 	_expect_equal(
 		home_space_ids.size(),
-		CATALOG.SELECTION_LIMIT,
-		"formal World exposes exactly the selectable home slots",
+		POPULATION_RULES.DEFAULT_RESIDENT_COUNT,
+		"formal World exposes fifteen physical homes",
 	)
 	for value: Variant in catalog.get("residents", []) as Array:
 		var resident := value as Dictionary
@@ -480,7 +503,7 @@ func _verify_session_projection_confirmation() -> void:
 				deleted_preset_data.get("confirmation_payload", {}) as Dictionary
 			).get("slots", []) as Array
 		).size(),
-		CATALOG.SELECTION_LIMIT,
+		POPULATION_RULES.DEFAULT_RESIDENT_COUNT,
 		"deleting one of 16 presets leaves a confirmable 15-resident draft",
 	)
 
@@ -498,7 +521,7 @@ func _verify_session_projection_confirmation() -> void:
 	_expect_equal(
 		below_floor_data.get("confirmation_payload"),
 		{},
-		"fewer than 15 projected candidates cannot produce a draft",
+		"a selected resident missing from a reduced projection cannot produce a draft",
 	)
 
 	var excluded_selection_data := (
@@ -530,7 +553,7 @@ func _verify_session_projection_confirmation() -> void:
 	})
 	var custom_selection := (
 		custom_data.get("recommended_resident_ids", []) as Array
-	).slice(0, CATALOG.SELECTION_LIMIT - 1)
+	).slice(0, POPULATION_RULES.DEFAULT_RESIDENT_COUNT - 1)
 	custom_selection.append(custom_id)
 	custom_data["selected_resident_ids"] = custom_selection
 	CATALOG.update_confirmation_payload(custom_data, 13)
@@ -541,10 +564,10 @@ func _verify_session_projection_confirmation() -> void:
 	)
 	_expect_equal(
 		custom_slots.size(),
-		CATALOG.SELECTION_LIMIT,
+		POPULATION_RULES.DEFAULT_RESIDENT_COUNT,
 		"a formally merged custom resident can join a 15-resident draft",
 	)
-	if custom_slots.size() == CATALOG.SELECTION_LIMIT:
+	if custom_slots.size() == POPULATION_RULES.DEFAULT_RESIDENT_COUNT:
 		_expect_equal(
 			(custom_slots.back() as Dictionary).get("residentId"),
 			custom_id,

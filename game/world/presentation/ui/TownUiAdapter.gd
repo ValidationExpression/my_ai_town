@@ -1,6 +1,8 @@
 class_name TownUiAdapter
 extends Node
 
+const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
+
 signal view_model_changed(scope: String, view_model: Dictionary)
 signal operation_completed(scope: String, operation: Dictionary)
 
@@ -3995,7 +3997,7 @@ func _hud_resident_directory(runtime_state: Dictionary) -> Dictionary:
 			location_label = String(state.get("spaceId", "")).strip_edges()
 		var behavior_label := String(state.get("doing", "")).strip_edges()
 		# ResidentDirectoryDrawer 默认收起。头像资源只在玩家打开目录时加载，
-		# 避免首个 HUD 刷新同步读取 15 张图片，阻塞正常游玩帧。
+		# 避免首个 HUD 刷新同步读取整批居民图片，阻塞正常游玩帧。
 		var portrait_texture: Texture2D = null
 		if _resident_portraits_loaded:
 			portrait_texture = _resident_portrait_texture(resident_id)
@@ -4482,7 +4484,7 @@ func _build_pause_menu_view_model(operation: Dictionary, error: Dictionary) -> D
 			},
 			"contentSummary": {
 				"residentCount": resident_count,
-				"residentCapacity": 15,
+				"residentCapacity": POPULATION_RULES.MAX_RESIDENT_COUNT,
 				"mapPackId": "town",
 				"mapPackName": "固定单地图 · 地图包冻结",
 				"source": source,
@@ -5986,10 +5988,10 @@ func _resident_model_assignment_service_missing_view_model() -> Dictionary:
 			"source": "runtime",
 			"formalReady": false,
 			"draftRevision": 0,
-			"residentCount": 15,
+			"residentCount": 0,
 			"completedCount": 0,
 			"invalidCount": 0,
-			"unassignedCount": 15,
+			"unassignedCount": 0,
 			"dirty": false,
 			"mode": "single",
 			"filter": "all",

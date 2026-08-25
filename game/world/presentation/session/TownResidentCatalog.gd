@@ -74,6 +74,62 @@ static func validate(catalog: Dictionary) -> Dictionary:
 	return validate_against_world(catalog, _load_world_data())
 
 
+static func validate_session_catalog(
+	catalog: Dictionary,
+	world_data: Dictionary,
+) -> Dictionary:
+	var base_catalog := load_catalog()
+	var base_validation := validate_against_world(base_catalog, world_data)
+	if not bool(base_validation.get("ok", false)):
+		return base_validation
+	for field: String in [
+		"schemaVersion",
+		"worldId",
+		"appearanceStatus",
+		"openingDefaults",
+	]:
+		if catalog.get(field) != base_catalog.get(field):
+			return _failure("SESSION_CATALOG_SHAPE_INVALID")
+	var resident_values: Variant = catalog.get("residents")
+	if (
+		not resident_values is Array
+		or resident_values.is_empty()
+		or resident_values.size() > MAX_SESSION_RESIDENT_COUNT
+	):
+		return _failure("SESSION_CATALOG_RESIDENT_COUNT_INVALID")
+	var base_by_id: Dictionary = {}
+	for base_value: Variant in base_catalog.get("residents", []) as Array:
+		var base_entry := base_value as Dictionary
+		base_by_id[String(base_entry.get("residentId", ""))] = base_entry
+	var seen_ids: Dictionary = {}
+	for resident_value: Variant in resident_values as Array:
+		if not resident_value is Dictionary:
+			return _failure("SESSION_CATALOG_RESIDENT_INVALID")
+		var entry := resident_value as Dictionary
+		var resident_id := String(entry.get("residentId", ""))
+		if (
+			not _valid_session_resident_id(resident_id)
+			or seen_ids.has(resident_id)
+		):
+			return _failure("SESSION_CATALOG_RESIDENT_ID_INVALID")
+		var valid_base := (
+			base_by_id.has(resident_id)
+			and entry == (base_by_id[resident_id] as Dictionary)
+		)
+		if (
+			not valid_base
+			and not _session_custom_catalog_entry_is_valid(entry, world_data)
+		):
+			return _failure("SESSION_CATALOG_RESIDENT_INVALID")
+		seen_ids[resident_id] = true
+	return {
+		"ok": true,
+		"errorCode": "",
+		"retryable": false,
+		"residentCount": seen_ids.size(),
+	}
+
+
 static func validate_against_world(
 	catalog: Dictionary,
 	world_data: Dictionary,
@@ -105,7 +161,12 @@ static func validate_against_world(
 		or String(world_data.get("worldId", "")) != String(world_id)
 	):
 		return _failure("SESSION_CATALOG_WORLD_MISMATCH")
-	if _home_space_ids(world_data).size() != SELECTION_LIMIT:
+	if (
+		_home_space_ids(world_data).size()
+		!= POPULATION_RULES.DEFAULT_RESIDENT_COUNT
+		or POPULATION_RULES.housing_capacity(world_data)
+		< POPULATION_RULES.DEFAULT_RESIDENT_COUNT
+	):
 		return _failure("SESSION_CATALOG_HOME_SPACES_INVALID")
 	var opening_validation := _validate_opening_defaults(
 		catalog.get("openingDefaults"),
@@ -246,12 +307,14 @@ static func validate_against_world(
 		):
 			return _failure("SESSION_CATALOG_PORTRAIT_MISSING")
 		ids[resident_id] = true
+	var housing_capacity := POPULATION_RULES.housing_capacity(world_data)
 	return {
 		"ok": true,
 		"errorCode": "",
 		"retryable": false,
 		"residentCount": ids.size(),
-		"selectionLimit": SELECTION_LIMIT,
+		"selectionLimit": mini(SELECTION_LIMIT, housing_capacity),
+		"housingCapacity": housing_capacity,
 		"appearanceReady": true,
 	}
 
@@ -269,7 +332,8 @@ static func build_view_model(
 	if revision < 1:
 		return {}
 	var catalog := load_catalog()
-	var validation := validate(catalog)
+	var world_data := _load_world_data()
+	var validation := validate_against_world(catalog, world_data)
 	if not bool(validation.get("ok", false)):
 		return {}
 	var residents: Array[Dictionary] = []
@@ -310,8 +374,14 @@ static func build_view_model(
 				else "legacy_first_frame"
 			),
 		})
-	var recommended_ids := _recommended_resident_ids(resident_catalog)
-	if recommended_ids.size() != SELECTION_LIMIT:
+	var housing_capacity := POPULATION_RULES.housing_capacity(world_data)
+	var selection_limit := mini(SELECTION_LIMIT, housing_capacity)
+	var selection_default := mini(DEFAULT_SELECTION_COUNT, selection_limit)
+	var recommended_ids := _recommended_resident_ids(
+		resident_catalog,
+		selection_default,
+	)
+	if recommended_ids.size() != selection_default:
 		return {}
 	var data := {
 		"capabilityMode": "formal",
@@ -319,8 +389,14 @@ static func build_view_model(
 		"formalReady": true,
 		"internalPlaytest": false,
 		"selection_minimum": MIN_SELECTION_COUNT,
-		"selection_default": DEFAULT_SELECTION_COUNT,
-		"selection_limit": SELECTION_LIMIT,
+		"selection_default": selection_default,
+		"selection_limit": selection_limit,
+		"housing_capacity": housing_capacity,
+		"housing_warning": (
+			"当前住宅最多容纳 %d 位居民，居民上限已相应降低。" % housing_capacity
+			if housing_capacity < SELECTION_LIMIT
+			else ""
+		),
 		"provider_id": provider_id,
 		"model_id": model_id,
 		"provider_ready": provider_ready,
@@ -334,6 +410,7 @@ static func build_view_model(
 		"recommended_resident_ids": recommended_ids,
 		"confirmation_payload": {},
 		"staffing_warnings": [],
+		"staffing_blockers": [],
 		"resident_catalog_status": "formal",
 		"resident_catalog": resident_catalog.duplicate(true),
 		"residents": residents,
@@ -359,6 +436,7 @@ static func build_view_model(
 
 static func _recommended_resident_ids(
 	resident_catalog: Array,
+	target_count: int = DEFAULT_SELECTION_COUNT,
 ) -> Array[String]:
 	var recommended_ids: Array[String] = []
 	var recommended_set: Dictionary = {}
@@ -381,7 +459,7 @@ static func _recommended_resident_ids(
 		recommended_ids.append(resident_id)
 		recommended_set[resident_id] = true
 		covered_occupations[occupation_label] = true
-		if recommended_ids.size() >= SELECTION_LIMIT:
+		if recommended_ids.size() >= target_count:
 			return recommended_ids
 	for catalog_value: Variant in resident_catalog:
 		if not catalog_value is Dictionary:
@@ -393,7 +471,7 @@ static func _recommended_resident_ids(
 			continue
 		recommended_ids.append(resident_id)
 		recommended_set[resident_id] = true
-		if recommended_ids.size() >= SELECTION_LIMIT:
+		if recommended_ids.size() >= target_count:
 			break
 	return recommended_ids
 
@@ -405,6 +483,7 @@ static func update_confirmation_payload(
 	draft_revision: int = 1,
 ) -> void:
 	data["staffing_warnings"] = []
+	data["staffing_blockers"] = []
 	var provider_id := str(provider_id_value)
 	var model_id := str(model_id_value)
 	if _is_integer_number(provider_id_value) and str(model_id_value).is_empty():
@@ -419,24 +498,30 @@ static func update_confirmation_payload(
 		or not selected_value is Array
 		or not residents_value is Array
 		or not session_catalog_value is Array
-		or (residents_value as Array).size() < SELECTION_LIMIT
+		or (residents_value as Array).size() < (selected_value as Array).size()
 		or (residents_value as Array).size() > MAX_SESSION_RESIDENT_COUNT
-		or (session_catalog_value as Array).size() < SELECTION_LIMIT
+		or (session_catalog_value as Array).size() < (selected_value as Array).size()
 		or (session_catalog_value as Array).size() > MAX_SESSION_RESIDENT_COUNT
 	):
 		data["confirmation_payload"] = {}
 		return
 	var selected := selected_value as Array
-	if not POPULATION_RULES.supports_resident_count(selected.size()):
-		data["confirmation_payload"] = {}
-		return
 	var base_catalog := load_catalog()
 	var world_data := _load_world_data()
+	if not POPULATION_RULES.supports_resident_count_for_world(
+		selected.size(),
+		world_data,
+	):
+		data["confirmation_payload"] = {}
+		return
 	var catalog_validation := validate_against_world(base_catalog, world_data)
-	var home_space_ids := _home_space_ids(world_data)
+	var home_space_ids := POPULATION_RULES.allocated_home_space_ids(
+		world_data,
+		selected.size(),
+	)
 	if (
 		not bool(catalog_validation.get("ok", false))
-		or home_space_ids.size() != SELECTION_LIMIT
+		or home_space_ids.size() != selected.size()
 	):
 		data["confirmation_payload"] = {}
 		return
@@ -513,11 +598,16 @@ static func update_confirmation_payload(
 	if ordered_ids.size() != selected.size():
 		data["confirmation_payload"] = {}
 		return
-	data["staffing_warnings"] = _occupation_staffing_warnings(
+	var staffing_analysis := _occupation_staffing_analysis(
 		ordered_ids,
 		session_catalog,
 		world_data,
 	)
+	data["staffing_warnings"] = staffing_analysis.get("warnings", [])
+	data["staffing_blockers"] = staffing_analysis.get("blockers", [])
+	if not (data["staffing_blockers"] as Array).is_empty():
+		data["confirmation_payload"] = {}
+		return
 	var slots: Array[Dictionary] = []
 	for index in ordered_ids.size():
 		slots.append({
@@ -542,6 +632,18 @@ static func _occupation_staffing_warnings(
 	session_catalog: Array,
 	world_data: Dictionary,
 ) -> Array[Dictionary]:
+	return _occupation_staffing_analysis(
+		selected_resident_ids,
+		session_catalog,
+		world_data,
+	).get("warnings", []) as Array[Dictionary]
+
+
+static func _occupation_staffing_analysis(
+	selected_resident_ids: Array[String],
+	session_catalog: Array,
+	world_data: Dictionary,
+) -> Dictionary:
 	var catalog_by_id: Dictionary = {}
 	for catalog_value: Variant in session_catalog:
 		if not catalog_value is Dictionary:
@@ -578,28 +680,53 @@ static func _occupation_staffing_warnings(
 			chain.get("vacancyEffect", ""),
 		)
 	var warnings: Array[Dictionary] = []
+	var blockers: Array[Dictionary] = []
 	for occupation_value: Variant in world_data.get("occupations", []) as Array:
 		if not occupation_value is Dictionary:
 			continue
 		var occupation := occupation_value as Dictionary
 		var occupation_label := String(occupation.get("label", "")).strip_edges()
-		if (
-			occupation_label.is_empty()
-			or int(selected_occupation_counts.get(occupation_label, 0)) > 0
-		):
+		if occupation_label.is_empty():
 			continue
 		var occupation_id := String(occupation.get("occupationId", ""))
-		warnings.append({
+		var staffing_profile := occupation.get("staffingProfile", {}) as Dictionary
+		var selected_count := int(
+			selected_occupation_counts.get(occupation_label, 0),
+		)
+		var minimum_headcount := int(
+			staffing_profile.get("minimumHeadcount", 1),
+		)
+		var recommended_headcount := int(
+			staffing_profile.get("recommendedHeadcount", 1),
+		)
+		var maximum_headcount := int(
+			staffing_profile.get("maximumHeadcount", 1),
+		)
+		var detail := {
 			"occupationId": occupation_id,
 			"occupationLabel": occupation_label,
+			"selectedHeadcount": selected_count,
+			"minimumHeadcount": minimum_headcount,
+			"recommendedHeadcount": recommended_headcount,
+			"maximumHeadcount": maximum_headcount,
 			"workplacePlace": String(
 				occupation.get("primaryWorkplacePlace", ""),
 			),
 			"vacancyEffect": String(
 				vacancy_effect_by_occupation_id.get(occupation_id, ""),
 			),
-		})
-	return warnings
+		}
+		if selected_count < recommended_headcount:
+			warnings.append(detail.duplicate(true))
+		if selected_count > maximum_headcount:
+			var blocker := detail.duplicate(true)
+			blocker["reason"] = "occupation_capacity_exceeded"
+			blockers.append(blocker)
+	return {
+		"warnings": warnings,
+		"blockers": blockers,
+		"selectedOccupationCounts": selected_occupation_counts,
+	}
 
 
 static func _validate_opening_defaults(

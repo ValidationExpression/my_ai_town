@@ -2790,8 +2790,20 @@ func _scenario_staffing_negotiation_integration() -> void:
 	)
 	_expect_equal(
 		(staffing.get("duplicatePostIds", []) as Array).size(),
-		1,
-		"repeated occupation remains visible",
+		0,
+		"a second worker within the occupation capacity forms a team",
+	)
+	var grocer_team: Dictionary = {}
+	for post_value: Variant in staffing.get("posts", []) as Array:
+		var post := post_value as Dictionary
+		if String(post.get("occupationId", "")) == "occupation_grocer":
+			grocer_team = post
+			break
+	_expect_equal(grocer_team.get("status"), "team", "repeated grocers are an explicit team")
+	_expect_equal(
+		(grocer_team.get("teamMemberResidentIds", []) as Array).size(),
+		2,
+		"grocer team exposes both members",
 	)
 	var closed_cafe := _place_service_state(
 		world,
@@ -3720,7 +3732,7 @@ func _scenario_staffing_runtime() -> void:
 			) as Dictionary
 		)["job"] = "杂货店主"
 	var conflict := runtime.call("rebuild", duplicated) as Dictionary
-	_expect_ok(conflict, "duplicates and vacancies remain valid world state")
+	_expect_ok(conflict, "teams and vacancies remain valid world state")
 	var conflict_snapshot := conflict.get("snapshot", {}) as Dictionary
 	_expect_equal(
 		(conflict_snapshot.get("vacantPostIds", []) as Array).size(),
@@ -3729,8 +3741,8 @@ func _scenario_staffing_runtime() -> void:
 	)
 	_expect_equal(
 		(conflict_snapshot.get("duplicatePostIds", []) as Array).size(),
-		1,
-		"the repeated occupation creates one visible duplicate",
+		0,
+		"the second grocer is not treated as a duplicate",
 	)
 	var duplicate_grocer := runtime.call(
 		"post_for_occupation",
@@ -3743,7 +3755,17 @@ func _scenario_staffing_runtime() -> void:
 	_expect_equal(
 		(duplicate_grocer.get("assignedResidentIds", []) as Array).size(),
 		2,
-		"staffing runtime does not silently choose which duplicate must leave",
+		"staffing runtime keeps both members of the allowed team",
+	)
+	_expect_equal(
+		duplicate_grocer.get("status"),
+		"team",
+		"allowed multi-person staffing is exposed as a team",
+	)
+	_expect_equal(
+		duplicate_grocer.get("serviceThroughputCapacity"),
+		2,
+		"two active positions publish two units of service throughput",
 	)
 	_expect_equal(
 		(vacant_postal.get("assignedResidentIds", []) as Array).size(),
@@ -3753,6 +3775,41 @@ func _scenario_staffing_runtime() -> void:
 	_expect(
 		not String(vacant_postal.get("vacancyEffect", "")).is_empty(),
 		"vacant post exposes its service degradation consequence",
+	)
+	var over_capacity_residents := residents.duplicate(true)
+	var reassigned_count := 0
+	for resident_id_value: Variant in over_capacity_residents:
+		var resident_id := String(resident_id_value)
+		var social_state := (
+			over_capacity_residents[resident_id].get("socialState", {}) as Dictionary
+		)
+		if String(social_state.get("job", "")) == "杂货店主":
+			continue
+		social_state["job"] = "杂货店主"
+		reassigned_count += 1
+		if reassigned_count >= 3:
+			break
+	var over_capacity := runtime.call("rebuild", over_capacity_residents) as Dictionary
+	_expect_ok(over_capacity, "over-capacity staffing remains a diagnosable world state")
+	var over_capacity_snapshot := over_capacity.get("snapshot", {}) as Dictionary
+	_expect_equal(
+		(over_capacity_snapshot.get("overCapacityPostIds", []) as Array).size(),
+		1,
+		"four grocers exceed the three authored market work areas",
+	)
+	_expect_equal(
+		(over_capacity_snapshot.get("capacityConflictPostIds", []) as Array).size(),
+		1,
+		"over-capacity staffing publishes one capacity conflict",
+	)
+	var over_capacity_grocer := runtime.call(
+		"post_for_occupation",
+		"occupation_grocer",
+	) as Dictionary
+	_expect_equal(
+		over_capacity_grocer.get("status"),
+		"over_capacity",
+		"post status distinguishes overflow from an allowed team",
 	)
 
 	# 3c 依赖投影跳过:周期维护点边界用例

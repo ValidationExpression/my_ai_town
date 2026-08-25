@@ -1377,7 +1377,7 @@ func _scenario_f1_work_domain_ownership() -> void:
 				},
 				{
 					"occupationId": "occupation-duplicate",
-					"status": "duplicate",
+					"status": "over_capacity",
 					"assignedResidentIds": ["resident-duplicate"],
 				},
 			],

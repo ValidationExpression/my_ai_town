@@ -44,7 +44,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [
           "超长居民记忆路径改用哈希段",
           "执行 beta2→beta3 活动指纹迁移",
@@ -161,7 +161,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [
           "执行 beta2→beta3 活动指纹迁移",
           "补充空 travelerRelations v1"
@@ -278,7 +278,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [],
         "invariants": [
           "按 beta6 严格校验后重新发布",
@@ -392,7 +392,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [],
         "invariants": [
           "按 beta6 严格校验后重新发布",
@@ -506,7 +506,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [],
         "invariants": [
           "按 beta6 严格校验后重新发布",
@@ -620,7 +620,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [],
         "invariants": [
           "当前格式严格校验通过",
@@ -750,7 +750,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [],
         "invariants": [
           "自定义居民在 manifest、World 和 Agent 中保持一致",
@@ -917,7 +917,7 @@
       "expectedBeta6": {
         "targetRelease": "0.1.0-beta.6",
         "worldSectionCount": 27,
-        "activityFingerprint": "70dcd511461e5266174f3ddb5323d2adf4ecd5caf38cf25d7ba886ead3e3b818",
+        "activityFingerprint": "15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a",
         "requiredChanges": [],
         "invariants": [
           "slot、session、revision 不变",

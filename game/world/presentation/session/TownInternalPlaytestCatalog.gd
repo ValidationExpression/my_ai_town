@@ -5,6 +5,9 @@ extends RefCounted
 const FORMAL_CATALOG := preload(
 	"res://world/presentation/session/TownResidentCatalog.gd"
 )
+const NEW_GAME_DRAFT := preload(
+	"res://world/presentation/session/TownNewGameDraft.gd"
+)
 const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
 
 
@@ -71,11 +74,15 @@ static func update_confirmation_payload(
 	if ordered_ids.size() != selected.size():
 		data["confirmation_payload"] = {}
 		return
+	var home_space_ids := NEW_GAME_DRAFT.home_space_ids()
+	if home_space_ids.size() < ordered_ids.size():
+		data["confirmation_payload"] = {}
+		return
 	var slots: Array[Dictionary] = []
 	for index in ordered_ids.size():
 		slots.append({
 			"residentId": ordered_ids[index],
-			"spaceId": "home_%02d" % (index + 1),
+			"spaceId": home_space_ids[index],
 			"llmBinding": {
 				"mode": "model",
 				"providerId": provider_id,

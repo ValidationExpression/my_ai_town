@@ -125,6 +125,7 @@ func rebuild(
 	var vacant_post_ids: Array[String] = []
 	var duplicate_post_ids: Array[String] = []
 	var capacity_conflict_post_ids: Array[String] = []
+	var over_capacity_post_ids: Array[String] = []
 	for occupation_value: Variant in _world_data.get(
 		"occupations",
 		[],
@@ -183,22 +184,6 @@ func rebuild(
 				)
 		covering_support_ids.sort()
 		var physical_capacity := _physical_capacity(occupation)
-		var status := "covered"
-		if (
-			assigned_resident_ids.is_empty()
-			and covering_support_ids.is_empty()
-		):
-			status = "vacant"
-			vacant_post_ids.append(post_id)
-		elif assigned_resident_ids.is_empty():
-			status = "covered_by_arrangement"
-		elif (
-			assigned_resident_ids.size()
-			+ covering_support_ids.size()
-			> 1
-		):
-			status = "duplicate"
-			duplicate_post_ids.append(post_id)
 		var responsible_resident_ids := (
 			assigned_resident_ids.duplicate()
 		)
@@ -206,8 +191,35 @@ func rebuild(
 			if not responsible_resident_ids.has(resident_id):
 				responsible_resident_ids.append(resident_id)
 		responsible_resident_ids.sort()
-		if responsible_resident_ids.size() > physical_capacity:
+		var staffing_profile := occupation.get("staffingProfile", {}) as Dictionary
+		var minimum_headcount := maxi(
+			int(staffing_profile.get("minimumHeadcount", 1)),
+			0,
+		)
+		var recommended_headcount := maxi(
+			int(staffing_profile.get("recommendedHeadcount", 1)),
+			minimum_headcount,
+		)
+		var maximum_headcount := clampi(
+			int(staffing_profile.get("maximumHeadcount", physical_capacity)),
+			recommended_headcount,
+			physical_capacity,
+		)
+		var staffed_headcount := responsible_resident_ids.size()
+		var status := "covered"
+		if staffed_headcount < minimum_headcount:
+			status = "vacant"
+			vacant_post_ids.append(post_id)
+		elif staffed_headcount > maximum_headcount:
+			status = "over_capacity"
+			over_capacity_post_ids.append(post_id)
 			capacity_conflict_post_ids.append(post_id)
+		elif assigned_resident_ids.is_empty():
+			status = "covered_by_arrangement"
+		elif staffed_headcount < recommended_headcount:
+			status = "understaffed"
+		elif staffed_headcount > recommended_headcount:
+			status = "team"
 		var chain := _chains_by_occupation.get(
 			occupation_id,
 			{},
@@ -237,17 +249,40 @@ func rebuild(
 					[],
 				) as Array
 			).duplicate(),
-			"requiredHeadcount": 1,
+			"requiredHeadcount": minimum_headcount,
+			"recommendedHeadcount": recommended_headcount,
+			"maximumHeadcount": maximum_headcount,
 			"physicalCapacity": physical_capacity,
+			"leaderPolicy": String(
+				staffing_profile.get("leaderPolicy", "single_primary"),
+			),
+			"primaryResponsibleResidentId": (
+				String(responsible_resident_ids[0])
+				if (
+					String(staffing_profile.get(
+						"leaderPolicy",
+						"single_primary",
+					)) == "single_primary"
+					and not responsible_resident_ids.is_empty()
+				)
+				else ""
+			),
+			"teamMemberResidentIds": responsible_resident_ids.duplicate(),
+			"staffedHeadcount": staffed_headcount,
+			"serviceCapacityPerWorker": int(
+				staffing_profile.get("serviceCapacityPerWorker", 1),
+			),
+			"serviceThroughputCapacity": (
+				mini(staffed_headcount, maximum_headcount)
+				* int(staffing_profile.get("serviceCapacityPerWorker", 1))
+			),
 			"assignedResidentIds": assigned_resident_ids,
 			"supportingResidentIds": supporting_resident_ids,
 			"trialResidentIds": trial_resident_ids,
 			"temporarilyAbsentResidentIds": temporarily_absent_ids,
 			"responsibleResidentIds": responsible_resident_ids,
 			"status": status,
-			"capacityConflict": (
-				responsible_resident_ids.size() > physical_capacity
-			),
+			"capacityConflict": staffed_headcount > maximum_headcount,
 			"vacancyEffect": String(
 				chain.get("vacancyEffect", ""),
 			),
@@ -266,6 +301,7 @@ func rebuild(
 		"vacantPostIds": vacant_post_ids,
 		"duplicatePostIds": duplicate_post_ids,
 		"capacityConflictPostIds": capacity_conflict_post_ids,
+		"overCapacityPostIds": over_capacity_post_ids,
 		"unassignedResidentIds": unassigned_resident_ids,
 		"temporarilyAbsentResidentIds": temporarily_absent_resident_ids,
 		"qualificationsByResident": (
@@ -907,6 +943,7 @@ func _empty_snapshot() -> Dictionary:
 		"vacantPostIds": [],
 		"duplicatePostIds": [],
 		"capacityConflictPostIds": [],
+		"overCapacityPostIds": [],
 		"unassignedResidentIds": [],
 		"temporarilyAbsentResidentIds": [],
 		"qualificationsByResident": {},
