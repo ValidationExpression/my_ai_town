@@ -4,7 +4,6 @@ extends RefCounted
 
 const RULE_PROMPTS := [
 	"res://prompts/rules/10_identity_and_knowledge.md",
-	"res://prompts/rules/20_behavior_and_expression.md",
 	"res://prompts/rules/30_data_authority.md",
 	"res://prompts/rules/35_events_and_results.md",
 ]

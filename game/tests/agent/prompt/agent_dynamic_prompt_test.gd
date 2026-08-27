@@ -62,6 +62,18 @@ func _test_stable_baseline_and_dynamic_context(compiler_script: Script) -> void:
 		user_text.contains("生活节律：午饭、午休和自由活动"),
 		"the current daily rhythm enters the Agent decision context",
 	)
+	_expect(user_text.contains("身体状况：无"), "empty body conditions use a compact marker")
+	_expect(
+		user_text.contains("当前职业任务：无；没有真实任务时不要用整理、检查或站岗冒充工作成果。"),
+		"empty work tasks keep the important anti-fabrication rule in one line",
+	)
+	_expect(
+		not user_text.contains("没有当前职业任务时，可考虑的具体生活去处：")
+			and not user_text.contains("当前可做活动：")
+			and not user_text.contains("本人已经知道、可以在真实对话中转告的公告：")
+			and not user_text.contains("当前对话：无"),
+		"empty optional context blocks are omitted instead of sending placeholder sections",
+	)
 
 
 	_expect(user_text.contains("我还欠她一个解释"), "organized relationship enters the dynamic context")

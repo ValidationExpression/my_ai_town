@@ -21,7 +21,7 @@ static var _static_prompt_cache: Dictionary = {}
 
 var _initialization: Dictionary
 var _resident_names: Dictionary = {}
-var _baseline_prompt: String
+var _initialization_prompt: String
 var _prompt_root: String
 var _load_errors: Array[String] = []
 var _photo_content_resolver: Object
@@ -37,17 +37,10 @@ func _init(
 	_prompt_root = prompt_root.trim_suffix("/")
 	_photo_content_resolver = photo_content_resolver
 	_index_resident_names()
-	var static_prompt: String
-	if _static_prompt_cache.has(_prompt_root):
-		static_prompt = String(_static_prompt_cache[_prompt_root])
-	else:
-		static_prompt = _load_static_prompt()
-		if _load_errors.is_empty():
-			_static_prompt_cache[_prompt_root] = static_prompt
-	_baseline_prompt = "# 居民决策基线\n\n%s\n\n<resident_initialization>\n## 居民稳定资料\n\n%s\n</resident_initialization>" % [
-		static_prompt,
-		_render_initialization(),
-	]
+	# 先加载完整固定层，保证启动时仍能发现缺失或空的提示词文件；
+	# 实际决定时再按本轮是否有事件选择精简层。
+	_get_static_prompt(true, true)
+	_initialization_prompt = _render_initialization()
 
 
 func get_load_errors() -> Array[String]:
@@ -80,7 +73,13 @@ func compile(
 		"wake_packet": wake_copy,
 		"derived_constraints": derived_constraints.duplicate(true),
 		"messages": [
-			{"role": "system", "content": _baseline_prompt},
+			{
+				"role": "system",
+				"content": _build_system_prompt(
+					_wake_needs_event_rules(wake_copy),
+					not retry_feedback.strip_edges().is_empty(),
+				),
+			},
 			{
 				"role": "user",
 				"content": content_result["content"],
@@ -89,23 +88,48 @@ func compile(
 	}
 
 
+func _build_system_prompt(
+	include_event_rules: bool,
+	include_examples: bool,
+) -> String:
+	return "# 居民决策基线\n\n%s\n\n<resident_initialization>\n## 居民稳定资料\n\n%s\n</resident_initialization>" % [
+		_get_static_prompt(include_event_rules, include_examples),
+		_initialization_prompt,
+	]
+
+
+func _wake_needs_event_rules(wake_packet: Dictionary) -> bool:
+	return not (
+		(wake_packet.get("events", []) as Array).is_empty()
+		and (wake_packet.get("action_results", []) as Array).is_empty()
+		and (wake_packet.get("social_response_results", []) as Array).is_empty()
+	)
+
+
 func _build_dynamic_context(
 	wake_packet: Dictionary,
 	memory_prompt: String,
 	derived_constraints: Dictionary,
 	retry_feedback: String,
 ) -> String:
+	var snapshot := wake_packet.get("snapshot", {}) as Dictionary
+	var wake_sections: Array[String] = [_render_snapshot(wake_packet)]
+	for section: String in [
+		_render_social_matters(snapshot.get("social_matters", []) as Array),
+		_render_events(
+			wake_packet.get("events", []) as Array,
+			snapshot,
+		),
+		_render_action_results(wake_packet.get("action_results", []) as Array),
+		_render_social_response_results(
+			wake_packet.get("social_response_results", []) as Array,
+		),
+	]:
+		if not section.is_empty():
+			wake_sections.append(section)
 	var context := """# 本轮决定上下文
 
 <wake_context>
-%s
-
-%s
-
-%s
-
-%s
-
 %s
 </wake_context>
 
@@ -120,20 +144,7 @@ func _build_dynamic_context(
 <action_constraints>
 %s
 </action_constraints>""" % [
-		_render_snapshot(wake_packet),
-		_render_social_matters(
-			(
-				wake_packet.get("snapshot", {}) as Dictionary
-			).get("social_matters", []) as Array,
-		),
-		_render_events(wake_packet.get("events", []) as Array),
-		_render_action_results(wake_packet.get("action_results", []) as Array),
-		_render_social_response_results(
-			wake_packet.get(
-				"social_response_results",
-				[],
-			) as Array,
-		),
+		"\n\n".join(wake_sections),
 		_render_retry_feedback(retry_feedback),
 		_render_memory_context(memory_prompt),
 		_render_constraints(derived_constraints),
@@ -221,56 +232,7 @@ func _render_initialization() -> String:
 
 
 func _render_oc_priority_context() -> String:
-	var me := _initialization.get("me", {}) as Dictionary
-	var attributes := me.get("attributes", {}) as Dictionary
-	var social_state := me.get("social_state", {}) as Dictionary
-	var interest_labels := INTERESTS.combined_labels_for(
-		attributes.get("interests", []),
-		attributes.get("customInterests", []),
-	)
-	var custom_interests := attributes.get("customInterests", []) as Array
-	var custom_text := "、".join(custom_interests) if not custom_interests.is_empty() else "无"
-	var profile := me.get("soul_profile", {}) as Dictionary
-	var identity_labels: Array[String] = []
-	for value: Variant in profile.get("special_identities", []) as Array:
-		if value is Dictionary and not String((value as Dictionary).get("label", "")).is_empty():
-			identity_labels.append(String((value as Dictionary).get("label", "")))
-	var relationship_text := "无"
-	var relation_lines: Array[String] = []
-	for value: Variant in profile.get("relationship_hints", []) as Array:
-		if value is Dictionary:
-			var hint := value as Dictionary
-			var target_id := String(hint.get("target_resident_id", ""))
-			var target_name := String(_resident_names.get(target_id, target_id))
-			if not target_name.is_empty():
-				relation_lines.append("%s：%s（未确认）" % [target_name, String(hint.get("stance", ""))])
-	if not relation_lines.is_empty():
-		relationship_text = "；".join(relation_lines)
-	return """这是你每次决定都必须优先参考的完整 OC，而不是装饰信息。先用它判断你会如何理解眼前情况、说话、工作、交往和回应冲突；只有在本轮真实世界选项不允许时，才选择最接近 OC 的合法行动，不能凭空创造能力或事实。
-姓名：%s；性别：%s；年龄：%s
-职业：%s；工作地：%s；住处：%s
-欲望：%s
-性格：%s
-说话方式：%s
-兴趣：%s
-玩家自定义兴趣：%s
-开局识别的特殊身份：%s
-关系线索（只代表你自己的未确认看法）：%s
-""" % [
-		_safe(attributes.get("name", "")),
-		_safe(attributes.get("gender", "")),
-		_safe(attributes.get("age", "")),
-		_safe(social_state.get("job", "")),
-		_safe(social_state.get("workplace", "")),
-		_safe(social_state.get("home", "")),
-		_safe(attributes.get("desire", "")),
-		_safe(attributes.get("personality", "")),
-		_safe(attributes.get("speech", "")),
-		"、".join(interest_labels) if not interest_labels.is_empty() else "无",
-		_safe(custom_text),
-		"、".join(identity_labels) if not identity_labels.is_empty() else "无",
-		relationship_text,
-	]
+	return """这是你每次决定都必须优先参考的完整 OC，而不是装饰信息；完整资料在上方的“居民稳定资料”中。本轮先用其中与眼前情况有关的身份、欲望、性格、说话方式、兴趣和关系线索判断理解、说话、工作、交往与冲突回应；只有真实世界选项不允许时，才选择最接近 OC 的合法行动，不能凭空创造能力或事实。"""
 
 
 func _render_soul_profile(profile: Dictionary) -> String:
@@ -355,27 +317,29 @@ func _render_snapshot(wake_packet: Dictionary) -> String:
 				int(activity_needs.get("solitudeNeed", 50)),
 			]
 		)
-	lines.append("当前身体状况：")
 	if conditions.is_empty():
-		lines.append("- 无")
-	for condition_value: Variant in conditions:
-		var condition := condition_value as Dictionary
-		lines.append(
-			"- %s；程度%s；状态%s（状况 %s）"
-			% [
-				_safe(condition.get("label", "")),
-				_condition_severity_label(
-					String(condition.get("severity", "")),
-				),
-				_condition_state_label(
-					String(condition.get("state", "")),
-				),
-				_safe(condition.get("conditionId", "")),
-			]
-		)
-	lines.append("身体状况带来的当前需要：")
+		lines.append("身体状况：无")
+	else:
+		lines.append("当前身体状况：")
+		for condition_value: Variant in conditions:
+			var condition := condition_value as Dictionary
+			lines.append(
+				"- %s；程度%s；状态%s（状况 %s）"
+				% [
+					_safe(condition.get("label", "")),
+					_condition_severity_label(
+						String(condition.get("severity", "")),
+					),
+					_condition_state_label(
+						String(condition.get("state", "")),
+					),
+					_safe(condition.get("conditionId", "")),
+				],
+			)
 	if active_needs.is_empty():
-		lines.append("- 无")
+		lines.append("身体状况带来的当前需要：无")
+	else:
+		lines.append("身体状况带来的当前需要：")
 	var has_high_urgency_need := false
 	for need_value: Variant in active_needs:
 		var need := need_value as Dictionary
@@ -424,17 +388,18 @@ func _render_snapshot(wake_packet: Dictionary) -> String:
 			"生活节律：%s；这是可按本人性格、关系和眼前事件偏离的时间提示。"
 			% _safe(rhythm.get("label", ""))
 		)
-	lines.append("附近：")
 	var nearby := snapshot.get("nearby", []) as Array
 	if nearby.is_empty():
-		lines.append("- 无")
-	for nearby_value: Variant in nearby:
-		var person := nearby_value as Dictionary
-		lines.append("- %s——%s%s" % [
-			_person(person.get("resident_id", ""), person.get("name", "")),
-			_safe(person.get("doing", "")),
-			"（正在参与其他对话，当前不能搭话）" if not bool(person.get("available_for_conversation", true)) else "",
-		])
+		lines.append("附近：无")
+	else:
+		lines.append("附近：")
+		for nearby_value: Variant in nearby:
+			var person := nearby_value as Dictionary
+			lines.append("- %s——%s%s" % [
+				_person(person.get("resident_id", ""), person.get("name", "")),
+				_safe(person.get("doing", "")),
+				"（正在参与其他对话，当前不能搭话）" if not bool(person.get("available_for_conversation", true)) else "",
+			])
 	var visible_props := place.get("visible_props", []) as Array
 	lines.append(
 		"眼前可见物件：%s（可见不等于本轮可以操作）。"
@@ -473,56 +438,54 @@ func _render_snapshot(wake_packet: Dictionary) -> String:
 		"life_destination_options",
 		[],
 	) as Array
-	lines.append("没有当前职业任务时，可考虑的具体生活去处：")
-	if life_destination_options.is_empty():
-		lines.append("- 无额外提示；仍可依据本人需要留在这里、回家或与附近的人来往。")
-	for destination_value: Variant in life_destination_options:
-		var destination := destination_value as Dictionary
-		var activity_labels: Array[String] = []
-		for activity_value: Variant in destination.get("activities", []) as Array:
-			var activity := activity_value as Dictionary
-			var label := _safe(activity.get("label", ""))
-			var matched := PackedStringArray()
-			for interest_value: Variant in activity.get(
-				"matched_interests",
-				[],
-			) as Array:
-				matched.append(String(interest_value))
-			if not matched.is_empty():
-				label += "（符合兴趣：%s）" % "、".join(matched)
-			activity_labels.append(label)
-		lines.append("- %s：%s" % [
-			_safe(destination.get("place_id", "")),
-			"、".join(activity_labels),
-		])
 	if not life_destination_options.is_empty():
+		lines.append("没有当前职业任务时，可考虑的具体生活去处：")
+		for destination_value: Variant in life_destination_options:
+			var destination := destination_value as Dictionary
+			var activity_labels: Array[String] = []
+			for activity_value: Variant in destination.get("activities", []) as Array:
+				var activity := activity_value as Dictionary
+				var label := _safe(activity.get("label", ""))
+				var matched := PackedStringArray()
+				for interest_value: Variant in activity.get(
+					"matched_interests",
+					[],
+				) as Array:
+					matched.append(String(interest_value))
+				if not matched.is_empty():
+					label += "（符合兴趣：%s）" % "、".join(matched)
+				activity_labels.append(label)
+			lines.append("- %s：%s" % [
+				_safe(destination.get("place_id", "")),
+				"、".join(activity_labels),
+			])
 		lines.append(
 			"这些只是当前真实可用的生活可能，不是必须执行的日程；请结合性格、身体需要、关系和刚发生的事自行选择，也可以合理待着。",
 		)
 	var message_recipients := place.get("message_recipients", []) as Array
-	lines.append("当前可以委托邮差传话的人：")
-	if message_recipients.is_empty():
-		lines.append("- 无")
-	for recipient_value: Variant in message_recipients:
-		var recipient := recipient_value as Dictionary
-		lines.append("- %s" % _person(
-			recipient.get("resident_id", ""),
-			recipient.get("name", ""),
-		))
+	if not message_recipients.is_empty():
+		lines.append("当前可以委托邮差传话的人：")
+		for recipient_value: Variant in message_recipients:
+			var recipient := recipient_value as Dictionary
+			lines.append("- %s" % _person(
+				recipient.get("resident_id", ""),
+				recipient.get("name", ""),
+			))
 	lines.append("可用道具：")
 	var props := place.get("props", []) as Array
 	if props.is_empty():
-		lines.append("- 无")
-	for prop_value: Variant in props:
-		var prop := prop_value as Dictionary
-		lines.append("- %s——可%s" % [
-			_safe(prop.get("name", "")),
-			_join(prop.get("verbs", [])),
-		])
+		lines[-1] = "可用道具：无"
+	else:
+		for prop_value: Variant in props:
+			var prop := prop_value as Dictionary
+			lines.append("- %s——可%s" % [
+				_safe(prop.get("name", "")),
+				_join(prop.get("verbs", [])),
+			])
 	lines.append("当前职业任务：")
 	var work_tasks := snapshot.get("work_tasks", []) as Array
 	if work_tasks.is_empty():
-		lines.append("- 无；没有真实任务时不要用整理、检查或站岗冒充工作成果。")
+		lines[-1] = "当前职业任务：无；没有真实任务时不要用整理、检查或站岗冒充工作成果。"
 	for task_value: Variant in work_tasks:
 		var task := task_value as Dictionary
 		var target_labels: Array[String] = []
@@ -649,13 +612,12 @@ func _render_snapshot(wake_packet: Dictionary) -> String:
 						int(medical_dialogue.get("attempt_count", 0)),
 					],
 				)
-	lines.append("本人已经知道、可以在真实对话中转告的公告：")
 	var known_announcements := snapshot.get(
 		"known_announcements",
 		[],
 	) as Array
-	if known_announcements.is_empty():
-		lines.append("- 无")
+	if not known_announcements.is_empty():
+		lines.append("本人已经知道、可以在真实对话中转告的公告：")
 	for announcement_value: Variant in known_announcements:
 		var announcement := announcement_value as Dictionary
 		var publisher_id := String(
@@ -680,10 +642,9 @@ func _render_snapshot(wake_packet: Dictionary) -> String:
 				schedule_note,
 			],
 		)
-	lines.append("当前可做活动：")
 	var activities := place.get("activities", []) as Array
-	if activities.is_empty():
-		lines.append("- 无")
+	if not activities.is_empty():
+		lines.append("当前可做活动：")
 	var has_work_task_activity := false
 	for activity_value: Variant in activities:
 		var activity := activity_value as Dictionary
@@ -751,10 +712,9 @@ func _render_snapshot(wake_packet: Dictionary) -> String:
 				),
 			]
 		)
-	lines.append("眼前可留意的社会线索：")
 	var exposures := snapshot.get("social_exposures", []) as Array
-	if exposures.is_empty():
-		lines.append("- 无")
+	if not exposures.is_empty():
+		lines.append("眼前可留意的社会线索：")
 	for exposure_value: Variant in exposures:
 		var exposure := exposure_value as Dictionary
 		lines.append(
@@ -818,8 +778,6 @@ func _render_snapshot(wake_packet: Dictionary) -> String:
 				lines.append(
 					"你是医者。自然询问和回应，不替患者填写 medical_response，也不根据措辞自行宣布治愈。",
 				)
-	else:
-		lines.append("当前对话：无")
 	return "\n".join(lines)
 
 
@@ -902,10 +860,14 @@ func _render_traveler_relationship(value: Variant, lines: Array[String]) -> void
 	)
 
 
-func _render_events(events: Array) -> String:
-	var lines: Array[String] = ["[刚刚发生]"]
+func _render_events(events: Array, snapshot: Dictionary = {}) -> String:
 	if events.is_empty():
-		lines.append("- 无")
+		return ""
+	var lines: Array[String] = ["[刚刚发生]"]
+	var snapshot_turns: Array = []
+	var conversation_value: Variant = snapshot.get("conversation")
+	if conversation_value is Dictionary:
+		snapshot_turns = (conversation_value as Dictionary).get("turns", []) as Array
 	for event_value: Variant in events:
 		var event := event_value as Dictionary
 		var prefix := "- %s；事件 %s；%s" % [
@@ -1019,7 +981,10 @@ func _render_events(events: Array) -> String:
 						event.get("speaker_resident_ids", []),
 						event.get("speakers", []),
 					))
-				if typeof(event.get("turn")) == TYPE_DICTIONARY:
+				if (
+					typeof(event.get("turn")) == TYPE_DICTIONARY
+					and not _contains_turn(snapshot_turns, event.get("turn"))
+				):
 					lines.append_array(_render_turns([event["turn"]]))
 			"对话结束":
 				lines.append("%s；对话 %s；原因：%s" % [
@@ -1027,16 +992,20 @@ func _render_events(events: Array) -> String:
 					_safe(event.get("conversation_id", "")),
 					_safe(event.get("reason", "")),
 				])
-				lines.append_array(_render_turns(event.get("turns", []) as Array))
+				var event_turns: Array = []
+				for turn_value: Variant in event.get("turns", []) as Array:
+					if not _contains_turn(snapshot_turns, turn_value):
+						event_turns.append(turn_value)
+				lines.append_array(_render_turns(event_turns))
 			_:
 				lines.append(prefix)
 	return "\n".join(lines)
 
 
 func _render_action_results(results: Array) -> String:
-	var lines: Array[String] = ["[动作结果]"]
 	if results.is_empty():
-		lines.append("- 无")
+		return ""
+	var lines: Array[String] = ["[动作结果]"]
 	for result_value: Variant in results:
 		var result := result_value as Dictionary
 		lines.append("- %s；动作 %s；状态 %s；结果：%s" % [
@@ -1049,9 +1018,9 @@ func _render_action_results(results: Array) -> String:
 
 
 func _render_social_matters(matters: Array) -> String:
-	var lines: Array[String] = ["[当前知道的公共事项]"]
 	if matters.is_empty():
-		lines.append("- 无")
+		return ""
+	var lines: Array[String] = ["[当前知道的公共事项]"]
 	for matter_value: Variant in matters:
 		var matter := matter_value as Dictionary
 		var line := "- %s（%s，修订 %d）" % [
@@ -1091,9 +1060,9 @@ func _render_social_matters(matters: Array) -> String:
 
 
 func _render_social_response_results(results: Array) -> String:
-	var lines: Array[String] = ["[社会回应结果]"]
 	if results.is_empty():
-		lines.append("- 无")
+		return ""
+	var lines: Array[String] = ["[社会回应结果]"]
 	for result_value: Variant in results:
 		var result := result_value as Dictionary
 		lines.append(
@@ -1356,6 +1325,30 @@ func _render_turns(turns: Array) -> Array[String]:
 			_render_photos(turn.get("photos", []) as Array),
 		])
 	return lines
+
+
+func _contains_turn(turns: Array, candidate_value: Variant) -> bool:
+	if not candidate_value is Dictionary:
+		return false
+	var candidate := candidate_value as Dictionary
+	var candidate_id := _safe(candidate.get("turn_id", "")).strip_edges()
+	for turn_value: Variant in turns:
+		if not turn_value is Dictionary:
+			continue
+		var turn := turn_value as Dictionary
+		var turn_id := _safe(turn.get("turn_id", "")).strip_edges()
+		if not candidate_id.is_empty() and candidate_id == turn_id:
+			return true
+		if (
+			candidate_id.is_empty()
+			and _safe(candidate.get("speaker_resident_id", ""))
+			== _safe(turn.get("speaker_resident_id", ""))
+			and _safe(candidate.get("say", "")) == _safe(turn.get("say", ""))
+			and _safe(candidate.get("narration", ""))
+			== _safe(turn.get("narration", ""))
+		):
+			return true
+	return false
 
 
 func _render_action(action: Dictionary) -> String:
@@ -1944,28 +1937,82 @@ func _safe(value: Variant) -> String:
 	return PromptTextScript.escape_dynamic(value)
 
 
-func _load_static_prompt() -> String:
+func _get_static_prompt(
+	include_event_rules: bool,
+	include_examples: bool,
+) -> String:
+	var cache_key := "%s|events=%s|examples=%s" % [
+		_prompt_root,
+		str(include_event_rules),
+		str(include_examples),
+	]
+	if _static_prompt_cache.has(cache_key):
+		return String(_static_prompt_cache[cache_key])
+	var static_prompt := _load_static_prompt(
+		include_event_rules,
+		include_examples,
+	)
+	if _load_errors.is_empty():
+		_static_prompt_cache[cache_key] = static_prompt
+	return static_prompt
+
+
+func _load_static_prompt(
+	include_event_rules: bool = true,
+	include_examples: bool = true,
+) -> String:
 	var sections: Array[String] = []
 	for layer: Dictionary in STATIC_LAYERS:
 		var heading := String(layer["heading"])
 		var tag := String(layer["tag"])
-		var content := _load_layer(String(layer["directory"]))
+		var content := _load_layer(
+			String(layer["directory"]),
+			include_event_rules,
+			include_examples,
+		)
 		if not content.is_empty():
 			sections.append("<%s>\n## %s\n\n%s\n</%s>" % [tag, heading, content, tag])
 	return "\n\n".join(sections)
 
 
-func _load_layer(directory_name: String) -> String:
+func _load_layer(
+	directory_name: String,
+	include_event_rules: bool = true,
+	include_examples: bool = true,
+) -> String:
 	var directory_path := _prompt_root.path_join(directory_name)
 	var directory := DirAccess.open(directory_path)
 	if directory == null:
 		_load_errors.append("无法读取静态提示词目录：%s" % directory_path)
 		return ""
+	var use_compact_contract := (
+		directory_name == "rules"
+		and FileAccess.file_exists(
+			directory_path.path_join("40_decision_contract_compact.md")
+		)
+	)
 	var filenames: Array[String] = []
 	directory.list_dir_begin()
 	var filename := directory.get_next()
 	while not filename.is_empty():
-		if not directory.current_is_dir() and filename.ends_with(".md"):
+		if (
+			not directory.current_is_dir()
+			and filename.ends_with(".md")
+			and (
+				include_event_rules
+				or directory_name != "rules"
+				or filename != "35_events_and_results.md"
+			)
+			and not (
+				use_compact_contract
+				and filename == "40_decision_contract.md"
+			)
+			and not (
+				not include_examples
+				and directory_name == "rules"
+				and filename == "50_decision_examples.md"
+			)
+		):
 			filenames.append(filename)
 		filename = directory.get_next()
 	directory.list_dir_end()

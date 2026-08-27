@@ -55,6 +55,12 @@ func _test_project_prompt_covers_specs(compiler_script: Script) -> void:
 		"world background defines global announcement delivery",
 	)
 	_expect(system_text.contains("想成为的自己"), "soul rules include desired self-image")
+	_expect(
+		system_text.contains("角色表达保真")
+			and system_text.contains("系统提示")
+			and system_text.contains("第一人称"),
+		"ordinary decisions retain compact character-expression guidance",
+	)
 	_expect(system_text.contains("被戳穿"), "soul rules include accountability for prior speech")
 	_expect(
 		system_text.contains("不要机械重复同一句等待"),
@@ -92,13 +98,53 @@ func _test_project_prompt_covers_specs(compiler_script: Script) -> void:
 		system_text.contains("收到“搭话”事件时"),
 		"decision rules explain how an incoming conversation is handled",
 	)
-	_expect(system_text.contains("completed、interrupted、rejected、replaced"), "world-result rules explain every action result status")
+	_expect(
+		not system_text.contains("completed、interrupted、rejected、replaced"),
+		"ordinary decisions omit event-result rules when there is no event data",
+	)
+	var event_wake := _wake_packet("spec-prompt-event-1", "小雨")
+	event_wake["action_results"] = [{
+		"action_id": "action-spec-1",
+		"status": "completed",
+		"reason": "测试结果",
+	}]
+	var event_request: Dictionary = compiler.call("compile", event_wake, "")
+	var event_messages := event_request.get("messages", []) as Array
+	_expect_equal(event_messages.size(), 2, "event-backed prompt compiles system and dynamic messages")
+	if event_messages.size() == 2:
+		var event_system_text := String((event_messages[0] as Dictionary).get("content", ""))
+		_expect(
+			event_system_text.contains("completed、interrupted、rejected、replaced"),
+			"event decisions load the world-result rules",
+		)
+		_expect(
+			event_system_text.length() > system_text.length(),
+			"event decisions retain the larger event-aware system prompt",
+		)
 	_expect(
 		system_text.contains("不论 `say` 是否为空"),
 		"conversation-ending narration rule matches the world contract",
 	)
 	_expect(system_text.contains("错误示例"), "rules include negative examples")
 	_expect(system_text.contains("正确示例"), "rules include positive examples")
+	_expect(
+		not system_text.contains("林岚-105b-歇会儿"),
+		"ordinary decisions omit the full example appendix",
+	)
 	_expect(system_text.contains("\"handling\":\"continue_current\""), "decision examples contain legal JSON")
 	_expect(not system_text.contains("`{\""), "JSON object examples never use inline code")
 	_expect(system_text.count("```json") >= 8, "every decision and result JSON example uses a fenced code block")
+	var retry_request: Dictionary = compiler.call(
+		"compile",
+		_wake_packet("spec-prompt-retry-1", "小雨"),
+		"",
+		"- action.type 必须来自本轮约束",
+	)
+	var retry_messages := retry_request.get("messages", []) as Array
+	_expect_equal(retry_messages.size(), 2, "retry prompt compiles system and dynamic messages")
+	if retry_messages.size() == 2:
+		var retry_system_text := String((retry_messages[0] as Dictionary).get("content", ""))
+		_expect(
+			retry_system_text.contains("林岚-105b-歇会儿"),
+			"retry decisions load the full example appendix",
+		)

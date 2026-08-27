@@ -5133,7 +5133,10 @@ func _start_formal_continue(
 			false,
 		))
 		return
-	_provider_service = PROVIDER_SERVICE.new()
+	_provider_service = _startup_provider_service
+	if _provider_service == null:
+		_publish_startup_result(_failure("PROVIDER_SERVICE_NOT_BOUND", false))
+		return
 	var provider_configuration := _provider_service.call("configure", {
 		"capabilityMode": "formal",
 		"source": "runtime",

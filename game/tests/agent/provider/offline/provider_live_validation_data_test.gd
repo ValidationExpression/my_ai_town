@@ -39,7 +39,7 @@ func _initialize() -> void:
 	var cases: Array = data.call("behavior_cases")
 	var compiler: RefCounted = AgentPromptCompilerScript.new(initialization)
 	_expect_equal(compiler.call("get_load_errors"), [], "behavior validation prompt files load")
-	_expect_equal(cases.size(), 5, "behavior validation uses five focused wake packets")
+	_expect_equal(cases.size(), 12, "behavior validation uses twelve focused wake packets")
 	_expect_equal(
 		_case_ids(cases),
 		[
@@ -48,8 +48,15 @@ func _initialize() -> void:
 			"seek_storm_shelter",
 			"continue_current_work",
 			"answer_workshop_notice",
+			"conversation_follow_up",
+			"completed_action_reaction",
+			"memory_promise",
+			"social_candidate",
+			"weather_inside",
+			"player_announcement_interrupt",
+			"low_energy_rest",
 		],
-		"behavior cases cover the agreed triggers",
+		"behavior cases cover the agreed basic, continuity, social, and priority triggers",
 	)
 	for case_value: Variant in cases:
 		var case_data := case_value as Dictionary

@@ -567,6 +567,12 @@
       "func": "send",
       "call": "string:Callable(world, \"resident_display_name\")",
       "reason": "总控向专用模块注入代码中固定命名的 Callable；方法名不来自配置、存档或外部输入。"
+    },
+    {
+      "path": "game/world/presentation/ui/TownProviderSettingsService.gd",
+      "func": "_start_health_request",
+      "call": "string:.call( \"request_health_check\", targets.duplicate(true), Callable(self, \"_on_health_request_completed\").bind( request_id, intent, health_generation, targets.duplicate(true), ), force, )",
+      "reason": "设置页的手动连接检查必须绕过健康结果短缓存；Provider 服务仍通过已校验的公共契约接收强制探测参数。"
     }
   ]
 }
