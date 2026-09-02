@@ -7,7 +7,7 @@ script = ExtResource("1_script")
 
 [node name="RoomShell" type="Sprite2D" parent="."]
 z_index = -10
-texture_filter = 2
+texture_filter = 1
 
 [node name="WallCollision" type="StaticBody2D" parent="."]
 collision_mask = 0

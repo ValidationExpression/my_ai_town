@@ -965,11 +965,23 @@ func _render_events(events: Array, snapshot: Dictionary = {}) -> String:
 		return ""
 	var lines: Array[String] = ["[刚刚发生]"]
 	var snapshot_turns: Array = []
+	var snapshot_conversation_id := ""
 	var conversation_value: Variant = snapshot.get("conversation")
 	if conversation_value is Dictionary:
-		snapshot_turns = (conversation_value as Dictionary).get("turns", []) as Array
+		var snapshot_conversation := conversation_value as Dictionary
+		snapshot_conversation_id = String(
+			snapshot_conversation.get("conversation_id", ""),
+		).strip_edges()
+		snapshot_turns = snapshot_conversation.get("turns", []) as Array
 	for event_value: Variant in events:
 		var event := event_value as Dictionary
+		var comparable_snapshot_turns: Array = []
+		if (
+			not snapshot_conversation_id.is_empty()
+			and String(event.get("conversation_id", "")).strip_edges()
+			== snapshot_conversation_id
+		):
+			comparable_snapshot_turns = snapshot_turns
 		var prefix := "- %s；事件 %s；%s" % [
 			_render_time(event.get("time", {}) as Dictionary),
 			_safe(event.get("event_id", "")),
@@ -1083,7 +1095,10 @@ func _render_events(events: Array, snapshot: Dictionary = {}) -> String:
 					))
 				if (
 					typeof(event.get("turn")) == TYPE_DICTIONARY
-					and not _contains_turn(snapshot_turns, event.get("turn"))
+					and not _contains_turn(
+						comparable_snapshot_turns,
+						event.get("turn"),
+					)
 				):
 					lines.append_array(_render_turns([event["turn"]]))
 			"对话结束":
@@ -1094,7 +1109,7 @@ func _render_events(events: Array, snapshot: Dictionary = {}) -> String:
 				])
 				var event_turns: Array = []
 				for turn_value: Variant in event.get("turns", []) as Array:
-					if not _contains_turn(snapshot_turns, turn_value):
+					if not _contains_turn(comparable_snapshot_turns, turn_value):
 						event_turns.append(turn_value)
 				lines.append_array(_render_turns(event_turns))
 			_:

@@ -199,6 +199,37 @@ func _test_dynamic_constraints_and_data_boundaries(compiler_script: Script) -> v
 		},
 		"an incoming reply restricts L10 to replace_current with one reply action",
 	)
+	var other_conversation_wake := reply_wake.duplicate(true)
+	other_conversation_wake["decision_id"] = "other-conversation-turn-1"
+	other_conversation_wake["events"] = [{
+		"event_id": "overheard-event-1",
+		"time": {"day": 1, "clock": "08:10", "period": "上午"},
+		"type": "旁听",
+		"conversation_id": "conversation-2",
+		"speaker_resident_ids": ["resident-tang-xiao-man", "resident-other"],
+		"speakers": ["唐小满", "另一位居民"],
+		"turn": {
+			"turn_id": 1,
+			"speaker_resident_id": "resident-other",
+			"speaker": "另一位居民",
+			"say": "旁听里不能丢的独立内容",
+			"narration": "",
+			"photos": [],
+		},
+	}]
+	var other_conversation_request: Dictionary = compiler.call(
+		"compile",
+		other_conversation_wake,
+		"",
+	)
+	var other_conversation_text := String(
+		((other_conversation_request.get("messages", []) as Array)[1] as Dictionary)
+		.get("content", ""),
+	)
+	_expect(
+		other_conversation_text.contains("旁听里不能丢的独立内容"),
+		"a turn id from another conversation is not deduplicated against the active conversation",
+	)
 
 	var invitation_wake := reply_wake.duplicate(true)
 	invitation_wake["decision_id"] = "invite-constraints-1"
