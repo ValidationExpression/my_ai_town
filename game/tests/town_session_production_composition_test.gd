@@ -13,6 +13,9 @@ const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
 const MODEL_ASSIGNMENT_SERVICE := preload(
 	"res://ui/resident_model_assignment/runtime/ResidentModelAssignmentService.gd"
 )
+const MODEL_ASSIGNMENT_PROJECTION := preload(
+	"res://world/presentation/session/TownResidentModelAssignmentProjection.gd"
+)
 const RESIDENT_EDITOR_SERVICE := preload(
 	"res://world/presentation/session/TownResidentEditorService.gd"
 )
@@ -1529,6 +1532,26 @@ func _verify_variable_population_openings(
 				"residentId": String(binding.get("residentId", "")),
 				"residentName": String(binding.get("residentName", "")),
 			})
+		if resident_count == POPULATION_RULES.MAX_RESIDENT_COUNT:
+			var assignment_projection := MODEL_ASSIGNMENT_PROJECTION.build(
+				{
+					"residentIdentities": identities,
+					"residentBindings": compiled.get("residentBindings", []),
+					"openingConfig": opening,
+				},
+				projected_catalog,
+			) as Dictionary
+			_expect_ok(
+				assignment_projection,
+				"max-population saved session projects into offline model assignment",
+			)
+			if bool(assignment_projection.get("ok", false)):
+				_expect_ok(
+					NEW_GAME_DRAFT.validate(
+						assignment_projection.get("draft", {}) as Dictionary,
+					),
+					"max-population offline model assignment uses valid shared homes",
+				)
 		var world: RefCounted = WORLD.new()
 		var start_begin_msec := Time.get_ticks_msec()
 		var started := world.call("start", world_data, opening, identities) as Dictionary
