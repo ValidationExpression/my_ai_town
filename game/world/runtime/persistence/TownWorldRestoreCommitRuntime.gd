@@ -65,6 +65,9 @@ static func commit_candidate(
 		"runtimeGeneration": host._runtime_generation,
 		"worldRevision": host._world_revision,
 		"identitySnapshot": host.get_resident_identity_snapshot(),
+		"migrationReceipt": (
+			candidate.get("migrationReceipt", {}) as Dictionary
+		).duplicate(true),
 	}
 	return host._decorate_command_result(
 		host._restore_candidate_runtime.complete_commit(
@@ -137,6 +140,7 @@ static func install_core(host, context: Dictionary) -> void:
 	PERCEPTION_RUNTIME._rebuild_membership_grid_lookup(host)
 	host._dynamic_prop_runtime.reset()
 	host._agent_wake_preparation_runtime.clear()
+	host.conversation_state.clear_transient_photo_conversations()
 	host._animal_fact_runtime.restore_prepared(
 		prepared.get("animalFactsPrepared", {}) as Dictionary,
 	)

@@ -96,6 +96,12 @@ func configure_test_root(path_value: Variant) -> Dictionary:
 	return _success()
 
 
+func create_isolated_peer() -> RefCounted:
+	var peer: RefCounted = TownSessionSaveStore.new()
+	peer.set("_root", _root)
+	return peer
+
+
 func cleanup_test_root() -> Dictionary:
 	if not _root.begins_with("%s/" % TEST_ROOT):
 		return _failure("SESSION_SAVE_STORE_PATH_INVALID", false)
@@ -466,6 +472,38 @@ func reserve_revision(
 			"context": context,
 		}
 	return _failure("SESSION_SAVE_REVISION_EXHAUSTED", false)
+
+
+func discard_unpublished_revision(context_value: Variant) -> Dictionary:
+	var checked := MANIFEST.validate_context(context_value)
+	if checked.get("ok") != true:
+		return checked
+	var context := (
+		checked.get("context", {}) as Dictionary
+	).duplicate(true)
+	if FileAccess.file_exists(_manifest_path(context)):
+		return _failure("SESSION_SAVE_REVISION_ALREADY_PUBLISHED", false)
+	var allocation_path := _join(
+		_slot_root(String(context.get("slot_id", ""))),
+		"allocations/%020d.json" % int(context.get("save_revision", 0)),
+	)
+	if (
+		FileAccess.file_exists(allocation_path)
+		and not _revision_allocation_matches(context)
+	):
+		return _failure("SESSION_SAVE_REVISION_ALLOCATION_MISMATCH", false)
+	var revision_root := _revision_root(context)
+	if DirAccess.dir_exists_absolute(_absolute(revision_root)):
+		var remove_error := _remove_tree(revision_root)
+		if remove_error != OK:
+			return _failure("SESSION_SAVE_STORE_WRITE_FAILED", true)
+	if FileAccess.file_exists(allocation_path):
+		var allocation_error := DirAccess.remove_absolute(
+			_absolute(allocation_path),
+		)
+		if allocation_error != OK:
+			return _failure("SESSION_SAVE_STORE_WRITE_FAILED", true)
+	return _success()
 
 
 func check_legacy_slot_ephemeral_state(slot_id_value: Variant) -> Dictionary:
@@ -1017,7 +1055,10 @@ func publish_manifest(manifest_value: Variant) -> Dictionary:
 	})
 	var written := _atomic_create_json(path, manifest)
 	if written.get("ok") != true:
-		return _failure("SESSION_SAVE_MANIFEST_PUBLISH_FAILED", false)
+		return _failure(
+			"SESSION_SAVE_MANIFEST_PUBLISH_FAILED",
+			bool(written.get("retryable", true)),
+		)
 	return {
 		"ok": true,
 		"errorCode": "",
@@ -1039,9 +1080,11 @@ func list_published(slot_id_value: Variant) -> Dictionary:
 			"errorCode": "",
 			"retryable": false,
 			"manifests": [],
+			"readOnly": [],
 			"invalid": [],
 		}
 	var manifests: Array[Dictionary] = []
+	var read_only: Array[Dictionary] = []
 	var invalid: Array[String] = []
 	for file_name in directory.get_files():
 		if not file_name.ends_with(".json"):
@@ -1052,6 +1095,18 @@ func list_published(slot_id_value: Variant) -> Dictionary:
 			continue
 		var manifest := loaded.get("value", {}) as Dictionary
 		var revision := _canonical_revision_from_file(file_name)
+		var unsupported_versions := MANIFEST.unsupported_version_evidence(manifest)
+		if (
+			revision >= 1
+			and not unsupported_versions.is_empty()
+			and String(manifest.get("slot_id", "")) == slot_id
+			and int(manifest.get("save_revision", -1)) == revision
+		):
+			read_only.append({
+				"manifest": manifest.duplicate(true),
+				"versions": unsupported_versions.duplicate(true),
+			})
+			continue
 		if (
 			revision < 1
 			or MANIFEST.validate(manifest).get("ok") != true
@@ -1066,11 +1121,19 @@ func list_published(slot_id_value: Variant) -> Dictionary:
 			right.get("save_revision", 0),
 		)
 	)
+	read_only.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return int(
+			(left.get("manifest", {}) as Dictionary).get("save_revision", 0),
+		) > int(
+			(right.get("manifest", {}) as Dictionary).get("save_revision", 0),
+		)
+	)
 	return {
 		"ok": true,
 		"errorCode": "",
 		"retryable": false,
 		"manifests": manifests,
+		"readOnly": read_only,
 		"invalid": invalid,
 	}
 
@@ -1265,8 +1328,13 @@ func list_incomplete(slot_id_value: Variant) -> Dictionary:
 						return latest
 					if (
 						kind == "restore"
-						and latest.get("state") == "restore_completed"
+						and latest.get("state") in [
+							"restore_completed",
+							"restore_reconciled",
+						]
 					):
+						continue
+					if kind == "save" and latest.get("state") == "save_reconciled":
 						continue
 					records.append(
 						(latest.get("record", {}) as Dictionary).duplicate(true),
