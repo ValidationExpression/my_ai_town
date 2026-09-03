@@ -147,7 +147,8 @@ func _run_behavior_cases(provider_id: String, model_id: String) -> void:
 			"stage": "behavior",
 			"case_id": case_data.get("id", ""),
 		})
-		var compiled := compiler.call("compile", wake, "") as Dictionary
+		var memory_prompt := String(case_data.get("memory", ""))
+		var compiled := compiler.call("compile", wake, memory_prompt) as Dictionary
 		var compile_errors: Array = compiled.get("errors", []) as Array
 		if compiled.get("ok") == false and compile_errors.is_empty():
 			compile_errors.append("模型输入组装失败")

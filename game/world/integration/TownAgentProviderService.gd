@@ -13,6 +13,7 @@ const CAPABILITY_MODES: Array[String] = ["development", "formal"]
 const FAKE_PROVIDER_ID := "fake"
 const MAX_SAFE_INTEGER := 9007199254740991
 const HEALTH_PROBE_MAX_TOKENS := 256
+const HEALTH_CACHE_TTL_MSEC := 120000
 const COMPATIBLE_PROFILE_TYPE := "openai-compatible-profile"
 const PUBLIC_USAGE_FIELDS: Array[String] = [
 	"prompt_tokens",
@@ -406,6 +407,7 @@ func request_model_catalog(
 func request_health_check(
 	targets_value: Variant,
 	on_complete_value: Variant = Callable(),
+	force := false,
 ) -> Dictionary:
 	if typeof(on_complete_value) != TYPE_CALLABLE:
 		return _failure("PROVIDER_CALLBACK_INVALID", false)
@@ -432,19 +434,97 @@ func request_health_check(
 		if on_complete.is_valid():
 			on_complete.call(rejected.duplicate(true))
 		return rejected
-	_cancel_pending_health_checks()
 	_health_request_sequence += 1
 	var request_id := "provider-health-%06d" % _health_request_sequence
+	var targets := (normalized.get("targets", []) as Array).duplicate(true)
+	var signature := _health_target_signature(targets)
+	if not force:
+		for request_value: Variant in _pending_health_requests.values():
+			if not request_value is Dictionary:
+				continue
+			var pending := request_value as Dictionary
+			if (
+				int(pending.get("configurationGeneration", -1))
+					== _configuration_generation
+				and String(pending.get("targetSignature", "")) == signature
+			):
+				var callbacks := (pending.get("callbacks", []) as Array).duplicate()
+				callbacks.append(on_complete)
+				pending["callbacks"] = callbacks
+				_pending_health_requests[String(pending.get("requestId", ""))] = pending
+				return {
+					"ok": true,
+					"accepted": true,
+					"status": "checking",
+					"errorCode": "",
+					"retryable": false,
+					"requestId": String(pending.get("requestId", "")),
+					"targetCount": targets.size(),
+				}
+	var cached_results: Dictionary = {}
+	var pending_targets: Array[Dictionary] = []
+	for target_value: Variant in targets:
+		var target := target_value as Dictionary
+		var target_key := _target_key(
+			String(target.get("providerId", "")),
+			String(target.get("modelId", "")),
+		)
+		var cached := _cached_health(target, bool(force))
+		if cached.is_empty():
+			pending_targets.append(target.duplicate(true))
+		else:
+			cached_results[target_key] = cached
+	if pending_targets.is_empty():
+		var cached_all_available := true
+		var cached_error_code := ""
+		var cached_retryable := false
+		for cached_value: Variant in cached_results.values():
+			if not cached_value is Dictionary:
+				continue
+			var cached_health := cached_value as Dictionary
+			if String(cached_health.get("status", "")) != "available":
+				cached_all_available = false
+				if cached_error_code.is_empty():
+					cached_error_code = String(
+						cached_health.get("errorCode", "PROVIDER_HEALTH_UNAVAILABLE"),
+					)
+				cached_retryable = cached_retryable or bool(
+					cached_health.get("retryable", false),
+				)
+		_cancel_pending_health_checks()
+		_pending_health_requests[request_id] = {
+			"requestId": request_id,
+			"configurationGeneration": _configuration_generation,
+			"targets": targets,
+			"targetSignature": signature,
+			"results": cached_results,
+			"callbacks": [on_complete],
+			"onComplete": on_complete,
+		}
+		_finish_health_request(request_id)
+		return {
+			"ok": cached_all_available,
+			"accepted": true,
+			"status": "available" if cached_all_available else "unavailable",
+			"errorCode": "" if cached_all_available else cached_error_code,
+			"retryable": cached_retryable,
+			"requestId": request_id,
+			"targetCount": targets.size(),
+			"cached": true,
+		}
+	_cancel_pending_health_checks()
 	var request := {
 		"requestId": request_id,
 		"configurationGeneration": _configuration_generation,
-		"targets": normalized.get("targets", []).duplicate(true),
-		"results": {},
+		"targets": targets,
+		"targetSignature": signature,
+		"results": cached_results,
+		"callbacks": [on_complete],
 		"onComplete": on_complete,
 	}
 	_pending_health_requests[request_id] = request
 	var prepared: Array[Dictionary] = []
-	for target_value: Variant in request.get("targets", []) as Array:
+	for target_value: Variant in pending_targets:
 		var target := target_value as Dictionary
 		var provider_id := String(target.get("providerId", ""))
 		var model_id := String(target.get("modelId", ""))
@@ -996,9 +1076,12 @@ func _finish_health_request(request_id: String) -> void:
 		"requestId": request_id,
 		"targets": target_results,
 	}
-	var on_complete := request.get("onComplete") as Callable
-	if on_complete.is_valid():
-		on_complete.call(result.duplicate(true))
+	var callbacks := (request.get("callbacks", []) as Array).duplicate()
+	if callbacks.is_empty():
+		callbacks.append(request.get("onComplete") as Callable)
+	for callback_value: Variant in callbacks:
+		if callback_value is Callable and (callback_value as Callable).is_valid():
+			(callback_value as Callable).call(result.duplicate(true))
 
 
 func _cancel_pending_health_checks() -> void:
@@ -1023,9 +1106,12 @@ func _cancel_pending_health_checks() -> void:
 				and String((current_value as Dictionary).get("requestId", "")) == request_id
 			):
 				_health_by_target.erase(key)
-		var on_complete := request.get("onComplete") as Callable
-		if on_complete.is_valid():
-			on_complete.call({
+		var callbacks := (request.get("callbacks", []) as Array).duplicate()
+		if callbacks.is_empty():
+			callbacks.append(request.get("onComplete") as Callable)
+		for callback_value: Variant in callbacks:
+			if callback_value is Callable and (callback_value as Callable).is_valid():
+				(callback_value as Callable).call({
 				"ok": false,
 				"accepted": true,
 				"status": "stale",
@@ -1033,7 +1119,42 @@ func _cancel_pending_health_checks() -> void:
 				"retryable": false,
 				"requestId": request_id,
 				"targets": [],
-			})
+				})
+
+
+func _cached_health(target: Dictionary, force: bool) -> Dictionary:
+	if force:
+		return {}
+	var key := _target_key(
+		String(target.get("providerId", "")),
+		String(target.get("modelId", "")),
+	)
+	var value: Variant = _health_by_target.get(key)
+	if not value is Dictionary:
+		return {}
+	var health := value as Dictionary
+	var checked_at := int(health.get("checkedAtMsec", 0))
+	if (
+		checked_at <= 0
+		or String(health.get("status", "")) in ["checking", "unchecked"]
+		or Time.get_ticks_msec() - checked_at > HEALTH_CACHE_TTL_MSEC
+	):
+		return {}
+	return health.duplicate(true)
+
+
+func _health_target_signature(targets: Array) -> String:
+	var keys: Array[String] = []
+	for target_value: Variant in targets:
+		if not target_value is Dictionary:
+			continue
+		var target := target_value as Dictionary
+		keys.append(_target_key(
+			String(target.get("providerId", "")),
+			String(target.get("modelId", "")),
+		))
+	keys.sort()
+	return "|".join(keys)
 
 
 func _health_from_provider_diagnostic(provider: Object) -> Dictionary:

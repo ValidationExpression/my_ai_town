@@ -1459,6 +1459,7 @@ func _check_connection(payload: Dictionary, request_id: String) -> Dictionary:
 		[{"providerId": provider_id, "modelId": model_id}],
 		request_id,
 		"provider_settings.check_connection",
+		true,
 	)
 
 
@@ -1519,6 +1520,7 @@ func _start_health_request(
 	targets: Array,
 	request_id: String,
 	intent: String,
+	force := false,
 ) -> Dictionary:
 	_active_health_request_id = request_id
 	var health_generation := _health_configuration_generation
@@ -1531,6 +1533,7 @@ func _start_health_request(
 			health_generation,
 			targets.duplicate(true),
 		),
+		force,
 	)
 	if not started_value is Dictionary:
 		_active_health_request_id = ""
