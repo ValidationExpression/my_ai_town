@@ -78,7 +78,7 @@ static func candidate_resident_ids(
 		if post_value is not Dictionary:
 			continue
 		var post := post_value as Dictionary
-		if String(post.get("status", "")) != "duplicate":
+		if String(post.get("status", "")) not in ["team", "over_capacity"]:
 			continue
 		for resident_value: Variant in post.get("assignedResidentIds", []) as Array:
 			var resident_id := String(resident_value)

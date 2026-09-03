@@ -23,6 +23,9 @@ var _checks := 0
 
 
 func _initialize() -> void:
+	var audio_controller := root.get_node_or_null("TownAudioController")
+	if audio_controller != null and audio_controller.has_method("prepare_shutdown"):
+		audio_controller.call("prepare_shutdown")
 	call_deferred("_run")
 
 
@@ -30,6 +33,7 @@ func _run() -> void:
 	var fixture := Node2D.new()
 	root.add_child(fixture)
 	await _test_first_frame_and_zoom(fixture)
+	await _test_max_population_marker(fixture)
 	await _test_entry_strip_click_area(fixture)
 	await _test_hidden_resident_input_boundary(fixture)
 	await _test_resident_body_pointer_activation(fixture)
@@ -82,6 +86,41 @@ func _test_first_frame_and_zoom(fixture: Node2D) -> void:
 			native_size,
 		"屋顶标记点击区覆盖完整原生面板",
 		)
+	marker.queue_free()
+
+
+func _test_max_population_marker(fixture: Node2D) -> void:
+	var marker := MARKER.new() as Node2D
+	marker.configure("满员住宅", Vector2(260.0, 180.0))
+	var residents: Array[Dictionary] = []
+	for index in range(30):
+		residents.append(_resident_entry(
+			"resident-max-%02d" % (index + 1),
+			"居民%02d" % (index + 1),
+		))
+	marker.set_residents(residents)
+	marker.set_available(true)
+	fixture.add_child(marker)
+	await process_frame
+	_expect_equal(marker.call("resident_count"), 30, "屋顶标记接收人口上限 30 人")
+	_expect_equal(marker.call("displayed_resident_count"), 3, "满员住宅默认只显示三人")
+	_expect_equal(marker.call("overflow_count"), 27, "满员住宅折叠态显示其余 27 人")
+	marker.call("expand")
+	await process_frame
+	var snapshot := marker.call("debug_asset_snapshot") as Dictionary
+	_expect_equal(snapshot.get("maxResidentCount"), 30, "屋顶标记人口上限来自统一规则")
+	_expect_equal(snapshot.get("residentCount"), 30, "屋顶标记状态保留完整满员名单")
+	_expect_equal(snapshot.get("displayedResidentCount"), 30, "展开后显示全部 30 人")
+	_expect_equal(snapshot.get("layoutColumns"), 5, "满员屋顶标记使用五列布局")
+	_expect_equal(snapshot.get("layoutRows"), 6, "满员屋顶标记使用六行布局")
+	_expect(bool(snapshot.get("runtimeTextureScaled", false)), "六行外壳覆盖完整满员布局")
+	_expect(
+		marker.get_node_or_null("MarkerContents/Portrait_居民30") != null,
+		"满员屋顶标记建立最后一位居民头像",
+	)
+	marker.set_residents([])
+	await process_frame
+	_expect_equal(marker.call("resident_count"), 0, "清空满员屋顶标记后不残留居民")
 	marker.queue_free()
 
 

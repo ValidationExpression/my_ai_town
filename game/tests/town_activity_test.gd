@@ -2744,6 +2744,13 @@ func _verify_save_restore(
 		true,
 		"旧存档会经过无人值守公共场所访问兼容节点",
 	)
+	_expect_equal(
+		(beta2_compatibility_migration.get("applied", []) as Array).has(
+			"2026-08-25-variable-population-staffing"
+		),
+		true,
+		"旧存档会经过可变人口职业编制兼容节点",
+	)
 	var active_legacy_snapshot := snapshot.duplicate(true)
 	var active_legacy_state := active_legacy_snapshot.get("state", {}) as Dictionary
 	var active_legacy_runtime := (

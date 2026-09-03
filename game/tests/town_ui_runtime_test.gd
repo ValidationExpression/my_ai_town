@@ -1398,6 +1398,7 @@ const AUDIO_DISPLAY_SETTINGS_SERVICE_SCRIPT := preload(
 	"res://world/presentation/ui/TownAudioDisplaySettingsService.gd"
 )
 const UiViewModel := preload("res://ui/common/AiTownUiViewModel.gd")
+const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
 const ProviderSettingsCompositeDesktop := preload(
 	"res://ui/provider_settings/composite/ProviderSettingsCompositeDesktop.gd"
 )
@@ -1639,6 +1640,7 @@ func _initialize() -> void:
 func _run_all() -> void:
 	await _scenario_dynamic_feedback_text_is_complete()
 	await _scenario_mobile_platform_foundation()
+	await _scenario_max_population_resident_overview()
 	await _scenario_ui_runtime_host_navigation()
 	await _scenario_formal_ui_runtime_contract()
 	await _scenario_game_flow_resident_model_assignment_route()
@@ -1651,6 +1653,88 @@ func _run_all() -> void:
 		"职业服务暂停原因会转换成玩家可读反馈",
 	)
 	_finish_suite("TOWN_UI_RUNTIME_PASS")
+
+
+func _scenario_max_population_resident_overview() -> void:
+	var scene := ResourceLoader.load(
+		"res://ui/resident_overview/ResidentOverviewScreen.tscn",
+	) as PackedScene
+	var overview := scene.instantiate() as Control if scene != null else null
+	_expect(overview != null, "居民总览三十人回归可以实例化正式页面")
+	if overview == null:
+		return
+	root.add_child(overview)
+	await process_frame
+	var residents: Array[Dictionary] = []
+	for index in POPULATION_RULES.MAX_RESIDENT_COUNT:
+		residents.append({
+			"residentId": "resident-overview-%02d" % (index + 1),
+			"displayName": "总览居民%02d" % (index + 1),
+			"identityStatus": "confirmed",
+			"homeLabel": "住宅%02d" % ((index % 15) + 1),
+			"occupationLabel": "小镇居民",
+			"workplaceLabel": "中心广场",
+			"currentPlaceLabel": "中心广场",
+			"currentActionLabel": "查看周围",
+			"actionPhaseLabel": "行动中",
+			"availabilityLabel": "可跟随",
+		})
+	var view_model := {
+		"scope": "resident_overview",
+		"status": "ready",
+		"revision": 1,
+		"data": {
+			"source": "runtime",
+			"capabilityMode": "formal",
+			"formalReady": true,
+			"residentCount": residents.size(),
+			"selectedResidentId": "resident-overview-01",
+			"residents": residents,
+		},
+		"actions": {},
+		"operation": _startup_operation("", "idle", ""),
+		"error": null,
+	}
+	overview.call("_apply_view_model", view_model)
+	var first_snapshot := overview.call("debug_snapshot") as Dictionary
+	_expect_equal(first_snapshot.get("residentCount"), 30, "居民总览接收全部三十位居民")
+	_expect_equal(first_snapshot.get("rosterOffset"), 0, "桌面居民总览先显示前十五位")
+	var wheel_down := InputEventMouseButton.new()
+	wheel_down.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel_down.pressed = true
+	overview.call("_on_mobile_roster_input", wheel_down)
+	var second_snapshot := overview.call("debug_snapshot") as Dictionary
+	_expect_equal(second_snapshot.get("rosterOffset"), 15, "桌面滚轮翻到后十五位居民")
+	var first_page_two_label := overview.find_child(
+		"ResidentRosterLabel00",
+		true,
+		false,
+	) as Label
+	_expect(
+		first_page_two_label != null
+		and first_page_two_label.text.contains("总览居民16"),
+		"桌面第二页真实显示第十六位居民",
+	)
+	overview.call("_select_row", 0)
+	_expect_equal(
+		(overview.call("debug_snapshot") as Dictionary).get("selectedResidentId"),
+		"resident-overview-16",
+		"桌面第二页可以选择第十六位居民",
+	)
+	overview.apply_route_payload({"selectedResidentId": "resident-overview-30"})
+	var routed_snapshot := overview.call("debug_snapshot") as Dictionary
+	_expect_equal(
+		routed_snapshot.get("rosterOffset"),
+		15,
+		"外部跳转到第三十位居民时自动显示所在页",
+	)
+	_expect_equal(
+		routed_snapshot.get("selectedResidentId"),
+		"resident-overview-30",
+		"外部跳转保留第三十位居民选择",
+	)
+	overview.queue_free()
+	await process_frame
 
 
 func _scenario_avatar_perception_only_refreshes_avatar_scope() -> void:
@@ -5613,6 +5697,34 @@ func _test_resident_selection_runtime_contract() -> void:
 		and confirm_button.tooltip_text.contains("不会阻止开局"),
 		"职业空缺必须只显示非阻塞提醒，不能禁用居民名单确认",
 	)
+	var high_population_selection: Dictionary = {}
+	for index in POPULATION_RULES.MAX_RESIDENT_COUNT:
+		high_population_selection["resident-%02d" % index] = true
+	selection.set("_selected_by_id", high_population_selection)
+	selection.call("_refresh_all")
+	var population_notice := selection.find_child("PageNotice", true, false) as Label
+	var selection_count := selection.find_child("SelectionCount", true, false) as Label
+	_expect(
+		population_notice != null
+		and population_notice.visible
+		and population_notice.text.contains("职业空缺")
+		and population_notice.text.contains("模型请求")
+		and population_notice.text.contains("设备负担"),
+		"超过推荐人口时在确认前显示性能和成本提示",
+	)
+	_expect(
+		selection_count != null
+		and selection_count.text.contains("推荐 15 人")
+		and selection_count.text.contains("上限 30 人"),
+		"居民选择页同时显示推荐人数和正式上限",
+	)
+	var restored_selection_vm := _resident_selection_view_model()
+	restored_selection_vm["revision"] = 2
+	_expect(
+		bool(selection.call("apply_view_model", restored_selection_vm)),
+		"性能提示回归后恢复正式居民选择 ViewModel",
+	)
+	selection.call("_apply_recommended_selection", false)
 	var detail_sprite := selection.find_child(
 		"DetailMapSprite",
 		true,
@@ -5702,9 +5814,10 @@ func _test_resident_selection_runtime_contract() -> void:
 func _resident_selection_view_model() -> Dictionary:
 	var residents: Array[Dictionary] = []
 	var recommended_ids: Array[String] = []
-	for index in 15:
+	for index in 30:
 		var resident_id := "resident-%02d" % index
-		recommended_ids.append(resident_id)
+		if index < POPULATION_RULES.DEFAULT_RESIDENT_COUNT:
+			recommended_ids.append(resident_id)
 		residents.append({
 			"resident_id": resident_id,
 			"display_name": "居民%02d" % index,
@@ -5744,7 +5857,9 @@ func _resident_selection_view_model() -> Dictionary:
 			"internalPlaytest": false,
 			"selection_minimum": 1,
 			"selection_default": 15,
-			"selection_limit": 15,
+			"selection_limit": POPULATION_RULES.MAX_RESIDENT_COUNT,
+			"housing_capacity": POPULATION_RULES.MAX_RESIDENT_COUNT,
+			"housing_warning": "",
 			"connection_label": "模型将在下一步分配",
 			"candidate_pool_revision": 1,
 			"focused_resident_id": "resident-00",
@@ -7080,9 +7195,31 @@ func _scenario_game_flow_resident_model_assignment_route() -> void:
 				[],
 			) as Array
 		).duplicate()
-		var replaced_assignment_resident_id := String(
-			assignment_selected_ids.pop_front()
+		var custom_occupation_name := String(
+			custom_selection_entry.get("occupation", ""),
 		)
+		var replaced_assignment_resident_id := ""
+		for assignment_catalog_value: Variant in (
+			merged_catalog.get("catalog", {}) as Dictionary
+		).get("residents", []) as Array:
+			var assignment_catalog_entry := assignment_catalog_value as Dictionary
+			var assignment_catalog_id := String(
+				assignment_catalog_entry.get("residentId", ""),
+			)
+			if (
+				assignment_selected_ids.has(assignment_catalog_id)
+				and String(
+					(assignment_catalog_entry.get("occupation", {}) as Dictionary).get(
+						"name",
+						"",
+					),
+				) == custom_occupation_name
+			):
+				replaced_assignment_resident_id = assignment_catalog_id
+				break
+		if replaced_assignment_resident_id.is_empty():
+			replaced_assignment_resident_id = String(assignment_selected_ids[0])
+		assignment_selected_ids.erase(replaced_assignment_resident_id)
 		assignment_selected_ids.append(custom_resident_id)
 		assignment_selection_data["selected_resident_ids"] = (
 			assignment_selected_ids
@@ -8030,7 +8167,7 @@ func _scenario_session_production_composition() -> void:
 		).get("ownerAssignments", {}) as Dictionary
 		_expect_equal(
 			formal_owners.size(),
-			RESIDENT_CATALOG.SELECTION_LIMIT,
+				RESIDENT_CATALOG.DEFAULT_SELECTION_COUNT,
 			"new opening assigns ownership to resident homes only",
 		)
 	_verify_custom_resident_pipeline(world_data, formal_catalog)
@@ -9247,7 +9384,26 @@ func _verify_custom_resident_pipeline(
 	var selected := (
 		selection_data.get("recommended_resident_ids", []) as Array
 	).duplicate()
-	selected.remove_at(1)
+	var custom_occupation_name := String(
+		(candidate.get("occupation", {}) as Dictionary).get("name", ""),
+	)
+	var replaced_resident_id := ""
+	for catalog_value: Variant in (
+		selection_data.get("resident_catalog", []) as Array
+	):
+		var catalog_entry := catalog_value as Dictionary
+		var catalog_resident_id := String(catalog_entry.get("residentId", ""))
+		if (
+			selected.has(catalog_resident_id)
+			and String(
+				(catalog_entry.get("occupation", {}) as Dictionary).get("name", ""),
+			) == custom_occupation_name
+		):
+			replaced_resident_id = catalog_resident_id
+			break
+	if replaced_resident_id.is_empty():
+		replaced_resident_id = String(selected[0])
+	selected.erase(replaced_resident_id)
 	selected.append(custom_id)
 	selection_data["selected_resident_ids"] = selected
 	RESIDENT_CATALOG.update_confirmation_payload(
@@ -9261,7 +9417,7 @@ func _verify_custom_resident_pipeline(
 	)
 	_expect_equal(
 		(custom_draft.get("slots", []) as Array).size(),
-		RESIDENT_CATALOG.SELECTION_LIMIT,
+		RESIDENT_CATALOG.DEFAULT_SELECTION_COUNT,
 		"merged custom candidate produces a complete 15-resident draft",
 	)
 	var compiled := COMPILER.compile(custom_draft, world_data, merged_catalog)

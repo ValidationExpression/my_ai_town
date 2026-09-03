@@ -51,6 +51,9 @@ const ACTIVITY_SOURCE_FINGERPRINT_AFTER_CLINIC_SELF_CARE := (
 const ACTIVITY_SOURCE_FINGERPRINT_AFTER_UNSTAFFED_PUBLIC_PLACE_ACCESS := (
 	"44815398b66700e89ebd014692af12d17c754bac2746d026f6796b35872b0cfd"
 )
+const ACTIVITY_SOURCE_FINGERPRINT_AFTER_VARIABLE_POPULATION_STAFFING := (
+	"15242c5c4903acce58b4700813dc1e277846d4b52e83669da6948f0caae6292a"
+)
 const ACTIVITY_SAVE_MIGRATIONS := [
 	{
 		"id": "2026-08-10-public-dining-prepare-dough-target",
@@ -148,6 +151,46 @@ const ACTIVITY_SAVE_MIGRATIONS := [
 		# 只增加从静态地点配置推导的无人值守访问规则，不改写已保存活动引用。
 		"executionRewrites": [],
 		"placeServiceStateRewrites": [],
+	},
+	{
+		"id": "2026-08-25-variable-population-staffing",
+		"fromSourceFingerprint": (
+			ACTIVITY_SOURCE_FINGERPRINT_AFTER_UNSTAFFED_PUBLIC_PLACE_ACCESS
+		),
+		"toSourceFingerprint": (
+			ACTIVITY_SOURCE_FINGERPRINT_AFTER_VARIABLE_POPULATION_STAFFING
+		),
+		# 职业编制和场所容量改为支持多人团队，但既有活动、位置与道具引用
+		# 没有删除或改名，旧执行可以按原进度继续。四个公共服务地点的
+		# 工作位和服务吞吐从单人扩展为团队，旧存档中的服务状态需要同步
+		# 到当前静态配置，避免把容量变化误判成存档损坏。
+		"executionRewrites": [],
+		"placeServiceStateRewrites": [
+			{
+				"placeId": "花房咖啡馆",
+				"field": "service_capacity",
+				"from": 1,
+				"to": 3,
+			},
+			{
+				"placeId": "图书馆",
+				"field": "service_capacity",
+				"from": 1,
+				"to": 3,
+			},
+			{
+				"placeId": "诊所",
+				"field": "service_capacity",
+				"from": 1,
+				"to": 2,
+			},
+			{
+				"placeId": "工作坊",
+				"field": "service_capacity",
+				"from": 1,
+				"to": 4,
+			},
+		],
 	},
 ]
 

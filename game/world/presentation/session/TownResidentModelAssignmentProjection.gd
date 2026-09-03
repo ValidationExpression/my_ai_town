@@ -3,6 +3,9 @@ extends RefCounted
 
 
 const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
+const NEW_GAME_DRAFT := preload(
+	"res://world/presentation/session/TownNewGameDraft.gd"
+)
 
 
 static func build(
@@ -47,6 +50,9 @@ static func build(
 	var opening := opening_value as Dictionary
 	var saved_by_id := _records_by_id(opening.get("residents", []))
 	var base_by_id := _records_by_id(base_catalog.get("residents", []))
+	var home_space_ids := NEW_GAME_DRAFT.home_space_ids()
+	if home_space_ids.size() < expected_ids.size():
+		return _failure("SESSION_RESIDENT_ASSIGNMENT_PROJECTION_INVALID")
 	var residents: Array[Dictionary] = []
 	var slots: Array[Dictionary] = []
 	for index in expected_ids.size():
@@ -75,7 +81,7 @@ static func build(
 		})
 		slots.append({
 			"residentId": resident_id,
-			"spaceId": "home_%02d" % (index + 1),
+			"spaceId": home_space_ids[index],
 			"llmBinding": (binding_by_id[resident_id] as Dictionary).duplicate(true),
 		})
 	return {

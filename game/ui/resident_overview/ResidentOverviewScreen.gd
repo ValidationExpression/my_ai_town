@@ -39,6 +39,8 @@ const CAPTURE_BASELINE_COLOR := Color("ff5ad6")
 const CAPTURE_BUTTON_COLOR := Color("ff8f3f")
 const MOBILE_VISIBLE_ROSTER_ROWS := 7
 const MOBILE_ROSTER_PAGE_STEP := 4
+const DESKTOP_VISIBLE_ROSTER_ROWS := 15
+const DESKTOP_ROSTER_PAGE_STEP := 15
 const MOBILE_ROSTER_ROW_SOURCE_RECT := Rect2(48, 150, 352, 48)
 
 var _adapter: Object
@@ -166,10 +168,11 @@ func navigation_state() -> Dictionary:
 
 func focus_default_control() -> void:
 	for index in _roster_buttons.size():
+		var item_index := _mobile_roster_offset + index
 		if (
-			index < _items.size()
+			item_index < _items.size()
 			and not _roster_buttons[index].disabled
-			and String(_items[index].get("residentId", "")) == _selected_resident_id
+			and String(_items[item_index].get("residentId", "")) == _selected_resident_id
 		):
 			_roster_buttons[index].grab_focus()
 			return
@@ -185,6 +188,12 @@ func debug_snapshot() -> Dictionary:
 		"scope": String(_view_model.get("scope", "")),
 		"residentCount": _items.size(),
 		"selectedResidentId": _selected_resident_id,
+		"rosterOffset": _mobile_roster_offset,
+		"visibleRosterCount": (
+			MOBILE_VISIBLE_ROSTER_ROWS
+			if MOBILE_UI_PROFILE.is_mobile_runtime()
+			else DESKTOP_VISIBLE_ROSTER_ROWS
+		),
 		"selectedHome": String(selected.get("homeLabel", "")),
 		"selectedOccupation": String(selected.get("occupationLabel", "")),
 		"selectedWorkplace": String(selected.get("workplaceLabel", "")),
@@ -888,6 +897,36 @@ func _apply_route_selection() -> void:
 		and not _items.is_empty()
 	):
 		_selected_resident_id = String(_items[0].get("residentId", ""))
+	var selected_index := -1
+	for index in _items.size():
+		if String(_items[index].get("residentId", "")) == _selected_resident_id:
+			selected_index = index
+			break
+	if selected_index >= 0:
+		var visible_rows := (
+			MOBILE_VISIBLE_ROSTER_ROWS
+			if MOBILE_UI_PROFILE.is_mobile_runtime()
+			else DESKTOP_VISIBLE_ROSTER_ROWS
+		)
+		if (
+			selected_index < _mobile_roster_offset
+			or selected_index >= _mobile_roster_offset + visible_rows
+		):
+			_mobile_roster_offset = (
+				(selected_index / visible_rows) * visible_rows
+			)
+	_mobile_roster_offset = clampi(
+		_mobile_roster_offset,
+		0,
+		maxi(
+			_items.size() - (
+				MOBILE_VISIBLE_ROSTER_ROWS
+				if MOBILE_UI_PROFILE.is_mobile_runtime()
+				else DESKTOP_VISIBLE_ROSTER_ROWS
+			),
+			0,
+		),
+	)
 	if _route_selection_pending and (requested.is_empty() or not _items.is_empty()):
 		_route_selection_pending = false
 
@@ -909,26 +948,28 @@ func _selected_item() -> Dictionary:
 func _render() -> void:
 	if _count_label == null:
 		return
-	var mobile_last := mini(
-		_mobile_roster_offset + MOBILE_VISIBLE_ROSTER_ROWS,
+	var visible_row_count := (
+		MOBILE_VISIBLE_ROSTER_ROWS
+		if MOBILE_UI_PROFILE.is_mobile_runtime()
+		else DESKTOP_VISIBLE_ROSTER_ROWS
+	)
+	var visible_last := mini(
+		_mobile_roster_offset + visible_row_count,
 		_items.size(),
 	)
 	_count_label.text = (
-		"%d 位 · %d-%d" % [
+		"%d 位 · %d-%d%s" % [
 			_items.size(),
 			_mobile_roster_offset + 1,
-			mobile_last,
+			visible_last,
+			"" if MOBILE_UI_PROFILE.is_mobile_runtime() else " · 滚轮翻页",
 		]
-		if MOBILE_UI_PROFILE.is_mobile_runtime() and not _items.is_empty()
+		if _items.size() > visible_row_count
 		else "%d 位居民" % _items.size()
 	)
 	_mode_label.text = "本局居民总览"
 	for index in 15:
-		var item_index := (
-			_mobile_roster_offset + index
-			if MOBILE_UI_PROFILE.is_mobile_runtime()
-			else index
-		)
+		var item_index := _mobile_roster_offset + index
 		var visible := (
 			index < MOBILE_VISIBLE_ROSTER_ROWS and item_index < _items.size()
 			if MOBILE_UI_PROFILE.is_mobile_runtime()
@@ -1086,11 +1127,7 @@ func _render_portrait(
 func _select_row(index: int) -> void:
 	if _mobile_roster_dragged:
 		return
-	var item_index := (
-		_mobile_roster_offset + index
-		if MOBILE_UI_PROFILE.is_mobile_runtime()
-		else index
-	)
+	var item_index := _mobile_roster_offset + index
 	if item_index < 0 or item_index >= _items.size():
 		return
 	_selected_resident_id = String(_items[item_index].get("residentId", ""))
@@ -1101,6 +1138,26 @@ func _select_row(index: int) -> void:
 
 func _on_mobile_roster_input(event: InputEvent) -> void:
 	if not MOBILE_UI_PROFILE.is_mobile_runtime():
+		if (
+			event is InputEventMouseButton
+			and (event as InputEventMouseButton).pressed
+			and (event as InputEventMouseButton).button_index in [
+				MOUSE_BUTTON_WHEEL_UP,
+				MOUSE_BUTTON_WHEEL_DOWN,
+			]
+		):
+			var direction := (
+				-DESKTOP_ROSTER_PAGE_STEP
+				if (event as InputEventMouseButton).button_index == MOUSE_BUTTON_WHEEL_UP
+				else DESKTOP_ROSTER_PAGE_STEP
+			)
+			_mobile_roster_offset = clampi(
+				_mobile_roster_offset + direction,
+				0,
+				maxi(_items.size() - DESKTOP_VISIBLE_ROSTER_ROWS, 0),
+			)
+			_render()
+			accept_event()
 		return
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch

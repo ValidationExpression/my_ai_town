@@ -725,7 +725,7 @@ func staffing_candidate_ability_score(
 	if primary_occupation_id.is_empty():
 		return 100
 	if (
-		String(post.get("status", "")) == "duplicate"
+		String(post.get("status", "")) == "over_capacity"
 		and (post.get("assignedResidentIds", []) as Array).has(resident_id)
 	):
 		return 100

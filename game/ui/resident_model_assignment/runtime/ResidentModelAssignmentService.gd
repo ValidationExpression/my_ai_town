@@ -1096,7 +1096,12 @@ func _validate_initial_draft(draft: Dictionary) -> Dictionary:
 	):
 		return _failure("SESSION_RESIDENT_COUNT_OUT_OF_RANGE")
 	var seen_residents: Dictionary = {}
-	var seen_spaces: Dictionary = {}
+	var allowed_occupancy_by_space: Dictionary = {}
+	for allowed_space_id: String in _expected_home_space_ids():
+		allowed_occupancy_by_space[allowed_space_id] = int(
+			allowed_occupancy_by_space.get(allowed_space_id, 0),
+		) + 1
+	var occupancy_by_space: Dictionary = {}
 	for value: Variant in slots_value as Array:
 		if not value is Dictionary:
 			return _failure("SESSION_DRAFT_SLOT_INVALID")
@@ -1113,12 +1118,17 @@ func _validate_initial_draft(draft: Dictionary) -> Dictionary:
 			return _failure("SESSION_HOME_SPACE_REQUIRED")
 		if not _expected_home_space_ids().has(space_id):
 			return _failure("SESSION_HOME_SPACE_UNKNOWN")
-		if seen_spaces.has(space_id):
-			return _failure("SESSION_HOME_SPACE_DUPLICATED")
+		occupancy_by_space[space_id] = int(
+			occupancy_by_space.get(space_id, 0),
+		) + 1
+		if (
+			int(occupancy_by_space.get(space_id, 0))
+			> int(allowed_occupancy_by_space.get(space_id, 0))
+		):
+			return _failure("SESSION_HOME_SPACE_CAPACITY_EXCEEDED")
 		if slot.has("llmBinding") and not slot.get("llmBinding") is Dictionary:
 			return _failure("SESSION_LLM_BINDING_INVALID")
 		seen_residents[resident_id] = true
-		seen_spaces[space_id] = true
 	return {"ok": true, "errorCode": "", "retryable": false}
 
 

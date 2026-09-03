@@ -12,6 +12,7 @@ const ACTIVITY_VALIDATOR := preload(
 const OUTDOOR_MOVEMENT_CLEARANCE := preload(
 	"res://world/data/town/TownOutdoorMovementClearance.gd"
 )
+const POPULATION_RULES := preload("res://world/runtime/TownPopulationRules.gd")
 const VALID_SPACE_TYPES := ["室外", "室内"]
 const VALID_PLACE_TYPES := ["公共地点", "住家", "铺面"]
 const REQUIRED_SOURCE_ARRAYS := {
@@ -392,6 +393,7 @@ static func validate_foundation(data: Dictionary) -> PackedStringArray:
 			workplace_count += 1
 		if place_type == "住家":
 			home_count += 1
+			_validate_home_resident_capacity(place_name, place, errors)
 			if not indoor_space_ids.has(space_id):
 				errors.append("住家 %s 必须属于独立室内空间" % place_name)
 			if assignable_workplace:
@@ -415,8 +417,11 @@ static func validate_foundation(data: Dictionary) -> PackedStringArray:
 		errors.append("地点台账必须包含 30 个地点，实际为 %d" % places.size())
 	if outdoor_place_count != 7:
 		errors.append("室外空间必须包含 7 个公共地点，实际为 %d" % outdoor_place_count)
-	if home_count != 15:
-		errors.append("住家槽位必须为 15 个，实际为 %d" % home_count)
+	if home_count != POPULATION_RULES.DEFAULT_RESIDENT_COUNT:
+		errors.append(
+			"住家槽位必须为 %d 个，实际为 %d"
+			% [POPULATION_RULES.DEFAULT_RESIDENT_COUNT, home_count]
+		)
 	if shop_count != 4:
 		errors.append("铺面槽位必须为 4 个，实际为 %d" % shop_count)
 	var expected_workplace_count := (
@@ -1205,6 +1210,27 @@ static func _validate_string_array(
 			errors.append("%s 包含重复值：%s" % [path, text])
 		else:
 			seen[text] = true
+
+
+static func _validate_home_resident_capacity(
+	place_name: String,
+	place: Dictionary,
+	errors: PackedStringArray,
+) -> void:
+	var capacity_value: Variant = place.get("residentCapacity")
+	if (
+		typeof(capacity_value) not in [TYPE_INT, TYPE_FLOAT]
+		or not is_finite(float(capacity_value))
+		or floorf(float(capacity_value)) != float(capacity_value)
+	):
+		errors.append("住家 %s 的 residentCapacity 必须为整数" % place_name)
+		return
+	var capacity := int(capacity_value)
+	if capacity < 1 or capacity > POPULATION_RULES.MAX_HOME_RESIDENT_CAPACITY:
+		errors.append(
+			"住家 %s 的 residentCapacity 必须在 1 至 %d 之间"
+			% [place_name, POPULATION_RULES.MAX_HOME_RESIDENT_CAPACITY]
+		)
 
 
 static func _validate_capabilities(

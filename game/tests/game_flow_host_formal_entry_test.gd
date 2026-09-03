@@ -381,12 +381,14 @@ func _run() -> void:
 		(selection.get("_view_model") as Dictionary).get("data", {}) as Dictionary
 	)
 	var custom_resident_id := ""
+	var custom_occupation := ""
 	var custom_index := -1
 	var residents := selection_data.get("residents", []) as Array
 	for index in residents.size():
 		var resident := residents[index] as Dictionary
 		if String(resident.get("source", "")) == "custom":
 			custom_resident_id = String(resident.get("resident_id", ""))
+			custom_occupation = String(resident.get("occupation", ""))
 			custom_index = index
 			break
 	_expect(
@@ -404,15 +406,23 @@ func _run() -> void:
 	var recommended := (
 		selection_data.get("selected_resident_ids", []) as Array
 	).duplicate()
-	var replaced_id := String(recommended[0])
+	var replaced_id := ""
 	var replaced_index := -1
 	residents = selection_data.get("residents", []) as Array
 	for index in residents.size():
 		var resident := residents[index] as Dictionary
-		if String(resident.get("resident_id", "")) == replaced_id:
+		var resident_id := String(resident.get("resident_id", ""))
+		if (
+			recommended.has(resident_id)
+			and String(resident.get("occupation", "")) == custom_occupation
+		):
+			replaced_id = resident_id
 			replaced_index = index
 			break
-	_expect(replaced_index >= 0, "formal selection finds the preset being replaced")
+	_expect(
+		replaced_index >= 0,
+		"formal selection finds a same-occupation preset being replaced",
+	)
 	if replaced_index < 0:
 		_finish()
 		return
@@ -441,7 +451,12 @@ func _run() -> void:
 	) as Button
 	_expect(
 		confirm != null and not confirm.disabled,
-		"formal recommended roster enables confirmation",
+		"formal recommended roster enables confirmation; tooltip=%s payload=%s blockers=%s"
+		% [
+			confirm.tooltip_text if confirm != null else "<missing>",
+			selection_data.get("confirmation_payload", {}),
+			selection_data.get("staffing_blockers", []),
+		],
 	)
 	if confirm == null or confirm.disabled:
 		_finish()

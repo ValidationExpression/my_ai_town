@@ -190,11 +190,14 @@ const RELEASES := [
 		"worldSectionCount": 27,
 		"activitySourceFingerprint": (
 			SAVE_SCHEMA_REGISTRY
-			.ACTIVITY_SOURCE_FINGERPRINT_AFTER_UNSTAFFED_PUBLIC_PLACE_ACCESS
+			.ACTIVITY_SOURCE_FINGERPRINT_AFTER_VARIABLE_POPULATION_STAFFING
 		),
-		# beta6 样本在当前无人值守公共场所规则合入前生成；它已经带有
-		# beta6 写入标记，仍应按当前发行版识别，再由恢复流水线重写当前指纹。
+		# beta6 样本可能由当前职业空缺和共享住宅规则合入前的构建生成；
+		# 它们已经带有 beta6 写入标记，仍应按当前发行版识别，再由恢复
+		# 流水线重写当前指纹。旧的 beta3～beta5 活动指纹也继续保留，
+		# 让没有改写过的历史修订可以安全进入同一条幂等迁移链。
 		"legacyActivitySourceFingerprints": [
+			SAVE_SCHEMA_REGISTRY.ACTIVITY_SOURCE_FINGERPRINT_AFTER_UNSTAFFED_PUBLIC_PLACE_ACCESS,
 			SAVE_SCHEMA_REGISTRY.ACTIVITY_SOURCE_FINGERPRINT_AFTER_PUBLIC_DINING_DAY_REWORK,
 		],
 		"residentPathLayout": "hashed",

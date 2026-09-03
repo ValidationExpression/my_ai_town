@@ -931,6 +931,9 @@ func _open_replacement_model_assignment() -> void:
 
 
 func _replacement_home_space_id(resident_id: String) -> String:
+	var assigned_space_id := _opening_home_space_id(resident_id)
+	if not assigned_space_id.is_empty():
+		return assigned_space_id
 	var resident_ids: Array[String] = []
 	var opening := _active_session_config.get("openingConfig", {}) as Dictionary
 	for value: Variant in opening.get("residents", []) as Array:
@@ -938,7 +941,43 @@ func _replacement_home_space_id(resident_id: String) -> String:
 			resident_ids.append(String((value as Dictionary).get("residentId", "")))
 	resident_ids.sort()
 	var index := resident_ids.find(resident_id)
-	return "home_%02d" % (index + 1 if index >= 0 else 1)
+	var world_data := _read_json(WORLD_DATA_PATH)
+	var allocated_spaces := POPULATION_RULES.allocated_home_space_ids(
+		world_data,
+		resident_ids.size(),
+	)
+	return (
+		allocated_spaces[index]
+		if index >= 0 and index < allocated_spaces.size()
+		else ""
+	)
+
+
+func _opening_home_space_id(resident_id: String) -> String:
+	var opening := _active_session_config.get("openingConfig", {}) as Dictionary
+	var home_name := ""
+	for resident_value: Variant in opening.get("residents", []) as Array:
+		if not resident_value is Dictionary:
+			continue
+		var resident := resident_value as Dictionary
+		if String(resident.get("residentId", "")) != resident_id:
+			continue
+		home_name = String(
+			(resident.get("socialState", {}) as Dictionary).get("home", ""),
+		)
+		break
+	if home_name.is_empty():
+		return ""
+	for place_value: Variant in _read_json(WORLD_DATA_PATH).get("places", []) as Array:
+		if not place_value is Dictionary:
+			continue
+		var place := place_value as Dictionary
+		if (
+			String(place.get("type", "")) == "住家"
+			and String(place.get("name", "")) == home_name
+		):
+			return String(place.get("spaceId", ""))
+	return ""
 
 
 func _on_replacement_assignment_back_requested(
@@ -3277,7 +3316,7 @@ func _on_custom_resident_delete_requested(
 			_failure("CUSTOM_RESIDENT_CANDIDATE_NOT_FOUND", false),
 		)
 		return
-	# The legacy one-resident signal must use the same authorization, 15-person
+	# The legacy one-resident signal must use the same authorization and whole-roster
 	# floor, revision, selection cleanup, and persistence transaction as batch
 	# deletion. This prevents an older UI surface from bypassing the formal gate.
 	_on_residents_delete_requested(
@@ -5159,12 +5198,39 @@ func _configure_in_session_resident_model_assignment(
 			"RESIDENT_MODEL_ASSIGNMENT_RUNTIME_DEPENDENCY_MISSING",
 			false,
 		)
+	var projection_config := _active_session_config.duplicate(true)
+	if not projection_config.get("residentIdentities") is Array:
+		var legacy_opening := projection_config.get("openingConfig", {}) as Dictionary
+		var legacy_identities: Array[Dictionary] = []
+		for resident_value: Variant in legacy_opening.get("residents", []) as Array:
+			if not resident_value is Dictionary:
+				continue
+			var resident_id := String(
+				(resident_value as Dictionary).get("residentId", "")
+			).strip_edges()
+			if not resident_id.is_empty():
+				legacy_identities.append({"residentId": resident_id})
+		projection_config["residentIdentities"] = legacy_identities
 	var projected := RESIDENT_MODEL_ASSIGNMENT_PROJECTION.build(
-		_active_session_config,
+		projection_config,
 		FORMAL_CATALOG.load_catalog(),
 	)
 	if projected.get("ok") != true:
 		return projected
+	var projected_draft := projected.get("draft", {}) as Dictionary
+	var projected_slots := projected_draft.get("slots", []) as Array
+	for slot_value: Variant in projected_slots:
+		if not slot_value is Dictionary:
+			continue
+		var slot := slot_value as Dictionary
+		var resident_id := String(slot.get("residentId", "")).strip_edges()
+		var assigned_space_id := _opening_home_space_id(resident_id)
+		if assigned_space_id.is_empty():
+			assigned_space_id = _replacement_home_space_id(resident_id)
+		if not assigned_space_id.is_empty():
+			slot["spaceId"] = assigned_space_id
+	projected_draft["slots"] = projected_slots
+	projected["draft"] = projected_draft
 	_resident_model_assignment_service = RESIDENT_MODEL_ASSIGNMENT_SERVICE.new()
 	var configured := _resident_model_assignment_service.configure(
 		_provider_service,

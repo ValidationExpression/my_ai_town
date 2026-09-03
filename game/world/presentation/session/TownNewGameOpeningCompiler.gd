@@ -3,6 +3,9 @@ extends RefCounted
 
 
 const DRAFT := preload("res://world/presentation/session/TownNewGameDraft.gd")
+const RESIDENT_CATALOG := preload(
+	"res://world/presentation/session/TownResidentCatalog.gd"
+)
 const OPENING := preload("res://world/runtime/TownWorldOpeningConfig.gd")
 const INTERESTS := preload(
 	"res://world/data/town/TownInterestCatalog.gd"
@@ -49,6 +52,25 @@ static func compile(
 		return residents_by_id_result
 	var residents_by_id := residents_by_id_result.get("residents", {}) as Dictionary
 	var model_bindings := DRAFT.model_bindings(draft)
+	var selected_resident_ids: Array[String] = []
+	for binding: Dictionary in model_bindings:
+		selected_resident_ids.append(String(binding.get("residentId", "")))
+	var staffing_analysis := RESIDENT_CATALOG._occupation_staffing_analysis(
+		selected_resident_ids,
+		catalog.get("residents", []) as Array,
+		world_data,
+	)
+	var staffing_blockers := staffing_analysis.get("blockers", []) as Array
+	if not staffing_blockers.is_empty():
+		var staffing_errors: Array[Dictionary] = []
+		for blocker_value: Variant in staffing_blockers:
+			var blocker := blocker_value as Dictionary
+			staffing_errors.append(_error(
+				"occupations.%s" % String(blocker.get("occupationId", "")),
+				"SESSION_OCCUPATION_CAPACITY_EXCEEDED",
+				blocker,
+			))
+		return _catalog_failure(staffing_errors)
 	var defaults := catalog.get("openingDefaults", {}) as Dictionary
 	var resident_body := defaults.get("residentBody", {}) as Dictionary
 	var resident_doing := String(defaults.get("residentDoing", "")).strip_edges()
@@ -172,7 +194,10 @@ static func compile(
 				{"spaceId": space_id},
 			))
 			continue
-		owner_assignments[home_name] = resident_id
+		# 共享住宅只保留首位住户作为房屋负责人；所有住户仍通过
+		# socialState.home 拥有稳定的居住地，不再把负责人等同于住户名单。
+		if not owner_assignments.has(home_name):
+			owner_assignments[home_name] = resident_id
 		var initial_state := {
 			"place": String(south_entry.get("placeName", "")),
 			"spaceId": String(south_entry.get("spaceId", "")),

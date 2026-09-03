@@ -14,6 +14,7 @@ static func staffing(
 		"vacantPostIds": [],
 		"duplicatePostIds": [],
 		"capacityConflictPostIds": [],
+		"overCapacityPostIds": [],
 		"unassignedResidentIds": [],
 	}
 
