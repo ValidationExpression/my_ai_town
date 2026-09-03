@@ -62,6 +62,18 @@ func _test_stable_baseline_and_dynamic_context(compiler_script: Script) -> void:
 		user_text.contains("生活节律：午饭、午休和自由活动"),
 		"the current daily rhythm enters the Agent decision context",
 	)
+	_expect(user_text.contains("身体状况：无"), "empty body conditions use a compact marker")
+	_expect(
+		user_text.contains("当前职业任务：无；没有真实任务时不要用整理、检查或站岗冒充工作成果。"),
+		"empty work tasks keep the important anti-fabrication rule in one line",
+	)
+	_expect(
+		not user_text.contains("没有当前职业任务时，可考虑的具体生活去处：")
+			and not user_text.contains("当前可做活动：")
+			and not user_text.contains("本人已经知道、可以在真实对话中转告的公告：")
+			and not user_text.contains("当前对话：无"),
+		"empty optional context blocks are omitted instead of sending placeholder sections",
+	)
 
 
 	_expect(user_text.contains("我还欠她一个解释"), "organized relationship enters the dynamic context")
@@ -186,6 +198,37 @@ func _test_dynamic_constraints_and_data_boundaries(compiler_script: Script) -> v
 			},
 		},
 		"an incoming reply restricts L10 to replace_current with one reply action",
+	)
+	var other_conversation_wake := reply_wake.duplicate(true)
+	other_conversation_wake["decision_id"] = "other-conversation-turn-1"
+	other_conversation_wake["events"] = [{
+		"event_id": "overheard-event-1",
+		"time": {"day": 1, "clock": "08:10", "period": "上午"},
+		"type": "旁听",
+		"conversation_id": "conversation-2",
+		"speaker_resident_ids": ["resident-tang-xiao-man", "resident-other"],
+		"speakers": ["唐小满", "另一位居民"],
+		"turn": {
+			"turn_id": 1,
+			"speaker_resident_id": "resident-other",
+			"speaker": "另一位居民",
+			"say": "旁听里不能丢的独立内容",
+			"narration": "",
+			"photos": [],
+		},
+	}]
+	var other_conversation_request: Dictionary = compiler.call(
+		"compile",
+		other_conversation_wake,
+		"",
+	)
+	var other_conversation_text := String(
+		((other_conversation_request.get("messages", []) as Array)[1] as Dictionary)
+		.get("content", ""),
+	)
+	_expect(
+		other_conversation_text.contains("旁听里不能丢的独立内容"),
+		"a turn id from another conversation is not deduplicated against the active conversation",
 	)
 
 	var invitation_wake := reply_wake.duplicate(true)

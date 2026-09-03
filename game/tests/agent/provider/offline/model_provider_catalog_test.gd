@@ -433,6 +433,7 @@ func _initialize() -> void:
 	_test_volcengine_custom_endpoint_model()
 	_test_multiple_compatible_connections()
 	_test_provider_health_isolation()
+	_test_provider_health_cache_reuse()
 	_test_local_endpoint_and_model_persistence()
 	_test_settings_service_custom_model_flow()
 	_test_custom_model_ui_grouping()
@@ -897,6 +898,48 @@ func _test_provider_health_isolation() -> void:
 	_expect(
 		health_by_provider.get("deepseek") != "available",
 		"changing DeepSeek invalidates only DeepSeek health",
+	)
+	request_host.free()
+
+
+func _test_provider_health_cache_reuse() -> void:
+	var service: RefCounted = ProviderServiceScript.new()
+	var request_host := Node.new()
+	service.call("configure", {
+		"capabilityMode": "formal",
+		"source": "runtime",
+		"allowFake": false,
+		"providerConfigs": {
+			"deepseek": {"api_key": "deepseek-key"},
+		},
+	}, request_host)
+	service.set("_health_by_target", {
+		"deepseek|deepseek-v4-flash": {
+			"providerId": "deepseek",
+			"modelId": "deepseek-v4-flash",
+			"status": "available",
+			"errorCode": "",
+			"retryable": false,
+			"checkedAtMsec": Time.get_ticks_msec(),
+		},
+	})
+	var callback_results: Array[Dictionary] = []
+	var started := service.call(
+		"request_health_check",
+		[{"providerId": "deepseek", "modelId": "deepseek-v4-flash"}],
+		func(result: Dictionary) -> void:
+			callback_results.append(result.duplicate(true)),
+	) as Dictionary
+	_expect_equal(started.get("accepted"), true, "a fresh health request can use a valid cache entry")
+	_expect_equal(started.get("cached"), true, "a recent health result is returned without a new probe")
+	_expect_equal(started.get("status"), "available", "a cached available result keeps the aggregate status")
+	_expect_equal(callback_results.size(), 1, "cached health still completes the normal callback path")
+	if callback_results.size() == 1:
+		_expect_equal(callback_results[0].get("status"), "available", "cached health callback keeps the aggregate status")
+	_expect_equal(
+		(service.get("_pending_health_requests") as Dictionary).is_empty(),
+		true,
+		"a cache hit does not leave a pending network request",
 	)
 	request_host.free()
 

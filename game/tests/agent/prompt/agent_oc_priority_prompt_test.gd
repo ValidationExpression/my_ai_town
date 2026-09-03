@@ -35,10 +35,11 @@ func _initialize() -> void:
 	var messages := request.get("messages", []) as Array
 	_expect_equal(messages.size(), 2, "OC priority request has system and dynamic messages")
 	if messages.size() == 2:
+		var system_text := String(messages[0].get("content", ""))
 		var user_text := String(messages[1].get("content", ""))
 		_expect(user_text.contains("<oc_priority>") and user_text.contains("</oc_priority>"), "每次决策都有独立 OC 优先区")
-		_expect(user_text.contains("夜间观星") and user_text.contains("旧地图"), "玩家自定义兴趣进入每次行为判断")
-		_expect(user_text.contains("职业：花房店员") and user_text.contains("性别：女"), "职业和性别进入每次行为判断")
-		_expect(user_text.contains("说话方式：说话简短") and user_text.contains("开局识别的特殊身份：牧师"), "三条设定和特殊身份进入每次行为判断")
+		_expect(system_text.contains("夜间观星") and system_text.contains("旧地图"), "玩家自定义兴趣保留在稳定居民资料")
+		_expect(system_text.contains("职业：花房店员") and system_text.contains("性别：女"), "职业和性别保留在稳定居民资料")
+		_expect(system_text.contains("说话方式：说话简短") and system_text.contains("OC资料：特殊身份=牧师"), "三条设定和特殊身份保留在稳定居民资料")
 		_expect(user_text.contains("必须优先参考的完整 OC"), "提示词明确要求 OC 优先于普通默认行为")
 	_finish_prompt_test("AGENT_OC_PRIORITY_PROMPT_PASS")

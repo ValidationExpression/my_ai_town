@@ -44,6 +44,13 @@ func behavior_cases() -> Array[Dictionary]:
 		_seek_storm_shelter_case(),
 		_continue_current_work_case(),
 		_answer_workshop_notice_case(),
+		_conversation_follow_up_case(),
+		_completed_action_reaction_case(),
+		_memory_promise_case(),
+		_social_candidate_case(),
+		_weather_inside_case(),
+		_player_announcement_interrupt_case(),
+		_low_energy_rest_case(),
 	]
 
 
@@ -119,11 +126,11 @@ func _seek_storm_shelter_case() -> Dictionary:
 	}]
 	return {
 		"id": "seek_storm_shelter",
-		"title": "雷暴时前往工作坊避雨",
+		"title": "雷暴时前往合法室内地点避雨",
 		"wake_packet": packet,
 		"expected": {
 			"handling": "replace_current",
-			"action": {"type": "去", "place": "工作坊"},
+			"action": {"type": "去"},
 		},
 	}
 
@@ -170,6 +177,250 @@ func _answer_workshop_notice_case() -> Dictionary:
 			"handling": "replace_current",
 			"action": {"type": "去", "place": "工作坊"},
 		},
+	}
+
+
+func _conversation_follow_up_case() -> Dictionary:
+	var packet := _base_packet("conversation-follow-up", "09:20", "上午")
+	var first_turn := {
+		"turn_id": 1,
+		"speaker_resident_id": "resident-tang-xiao-man",
+		"speaker": "唐小满",
+		"say": "木架明天能好吗？",
+		"narration": "她在木工台旁等着答复。",
+		"photos": [],
+	}
+	var second_turn := {
+		"turn_id": 2,
+		"speaker_resident_id": "resident-lin-lan",
+		"speaker": "林岚",
+		"say": "能，明早给你送去。",
+		"narration": "我没有停下手里的活。",
+		"photos": [],
+	}
+	var latest_turn := {
+		"turn_id": 3,
+		"speaker_resident_id": "resident-tang-xiao-man",
+		"speaker": "唐小满",
+		"say": "那我等你，别又熬夜。",
+		"narration": "她皱了皱眉。",
+		"photos": [],
+	}
+	packet["snapshot"]["conversation"] = {
+		"conversation_id": "conversation-follow-up",
+		"with_resident_id": "resident-tang-xiao-man",
+		"with": "唐小满",
+		"turns": [first_turn, second_turn, latest_turn],
+	}
+	packet["events"] = [{
+		"event_id": "conversation-follow-up-event",
+		"type": "对方答话",
+		"conversation_id": "conversation-follow-up",
+		"turn": latest_turn.duplicate(true),
+		"time": packet["snapshot"]["time"].duplicate(true),
+	}]
+	return {
+		"id": "conversation_follow_up",
+		"title": "连续对话承接前一句并继续回应",
+		"wake_packet": packet,
+		"expected": {
+			"handling": "replace_current",
+			"action": {
+				"type": "答话",
+				"conversation_id": "conversation-follow-up",
+			},
+		},
+	}
+
+
+func _completed_action_reaction_case() -> Dictionary:
+	var packet := _base_packet("completed-action-reaction", "11:35", "上午")
+	packet["snapshot"]["me"] = {
+		"doing": "刚在工作坊把木架收尾",
+		"current_action": null,
+		"body": {"困": "不困", "饿": "不饿", "累": "有点累"},
+	}
+	packet["snapshot"]["place"] = {
+		"name": "工作坊",
+		"props": [{"name": "饭盒", "verbs": ["吃饭"]}],
+	}
+	packet["action_results"] = [{
+		"action_id": "finish-frame-action",
+		"status": "completed",
+		"reason": "木架收尾完成，手腕有点酸。",
+		"time": packet["snapshot"]["time"].duplicate(true),
+	}]
+	return {
+		"id": "completed_action_reaction",
+		"title": "动作完成后先表达真实感受再决定下一步",
+		"wake_packet": packet,
+		"expected": {
+			"handling": "replace_current",
+			"reaction": {"source_action_id": "finish-frame-action"},
+		},
+	}
+
+
+func _memory_promise_case() -> Dictionary:
+	var packet := _base_packet("memory-promise", "08:30", "上午")
+	packet["snapshot"]["me"] = {
+		"doing": "站在广场上",
+		"current_action": null,
+		"body": {"困": "不困", "饿": "不饿", "累": "不累"},
+	}
+	packet["snapshot"]["place"] = {
+		"name": "广场",
+		"props": [],
+	}
+	return {
+		"id": "memory_promise",
+		"title": "记忆中的承诺继续影响当前行动",
+		"wake_packet": packet,
+		"memory": "\n".join([
+			"[重要记忆]",
+			"昨天我答应唐小满，今天上午把修好的木架送到市集。",
+			"",
+			"[人物关系]",
+			"唐小满：她信任我的手艺，我不想让她等太久。",
+			"",
+			"[短期目标]",
+			"先回工作坊确认木架，再送去市集。",
+		]),
+		"expected": {
+			"handling": "replace_current",
+		},
+	}
+
+
+func _social_candidate_case() -> Dictionary:
+	var packet := _base_packet("social-candidate", "13:10", "中午")
+	packet["snapshot"]["me"] = {
+		"doing": "在工作坊整理木料",
+		"current_action": null,
+		"body": {"困": "不困", "饿": "不饿", "累": "有点累"},
+	}
+	packet["snapshot"]["social_matters"] = [{
+		"matter_id": "matter-garden-help-live",
+		"revision": 2,
+		"kind": "resident_request",
+		"summary": "唐小满请人下午去社区花园帮忙修一张木桌。",
+		"expires_at": 900,
+		"response_round_id": "matter-garden-help-live-r1",
+		"response_window_until": 840,
+		"options": [
+			{
+				"option_id": "accept",
+				"meaning": "愿意在今天下午去帮忙。",
+				"allows_public_text": true,
+			},
+			{
+				"option_id": "decline",
+				"meaning": "今天不参加。",
+				"allows_public_text": true,
+			},
+			{
+				"option_id": "defer",
+				"meaning": "现在先不答应，稍后再决定。",
+				"allows_public_text": true,
+			},
+		],
+		"assignment": null,
+	}]
+	return {
+		"id": "social_candidate",
+		"title": "面对社会请求时独立权衡是否回应",
+		"wake_packet": packet,
+		"expected": {
+			"handling": "replace_current",
+		},
+	}
+
+
+func _weather_inside_case() -> Dictionary:
+	var packet := _base_packet("weather-inside", "15:20", "下午")
+	packet["snapshot"]["weather"] = "雷暴"
+	packet["snapshot"]["me"] = {
+		"doing": "在工作坊屋檐下打磨木板",
+		"current_action": {
+			"action_id": "indoor-work-action",
+			"type": "用道具",
+			"prop": "刨子",
+			"verb": "打磨木板",
+		},
+		"body": {"困": "不困", "饿": "不饿", "累": "不累"},
+	}
+	packet["snapshot"]["place"] = {
+		"name": "工作坊",
+		"props": [{"name": "刨子", "verbs": ["打磨木板"]}],
+	}
+	packet["events"] = [{
+		"event_id": "weather-inside-event",
+		"type": "天气变了",
+		"weather": "雷暴",
+		"time": packet["snapshot"]["time"].duplicate(true),
+	}]
+	return {
+		"id": "weather_inside",
+		"title": "室内工作不因户外雷暴机械回家",
+		"wake_packet": packet,
+		"expected": {"handling": "continue_current"},
+	}
+
+
+func _player_announcement_interrupt_case() -> Dictionary:
+	var packet := _base_packet("player-announcement-interrupt", "16:00", "下午")
+	packet["snapshot"]["me"] = {
+		"doing": "在工作坊打磨木板",
+		"current_action": {
+			"action_id": "player-priority-work",
+			"type": "用道具",
+			"prop": "刨子",
+			"verb": "打磨木板",
+		},
+		"body": {"困": "不困", "饿": "不饿", "累": "有点累"},
+	}
+	packet["snapshot"]["place"] = {
+		"name": "工作坊",
+		"props": [{"name": "刨子", "verbs": ["打磨木板"]}],
+	}
+	packet["events"] = [{
+		"event_id": "player-announcement-event",
+		"type": "公告到点",
+		"announcement_id": "player-call-town-square",
+		"publisher_resident_id": "avatar-1",
+		"announcement_priority": "player",
+		"scheduled_time_label": "现在",
+		"text": "请现在到广场集合，有事要商量。",
+		"time": packet["snapshot"]["time"].duplicate(true),
+	}]
+	return {
+		"id": "player_announcement_interrupt",
+		"title": "玩家公告打断普通工作并进入真实行动",
+		"wake_packet": packet,
+		"expected": {
+			"handling": "replace_current",
+			"action": {"type": "去", "place": "广场"},
+		},
+	}
+
+
+func _low_energy_rest_case() -> Dictionary:
+	var packet := _base_packet("low-energy-rest", "18:20", "傍晚")
+	packet["snapshot"]["me"] = {
+		"doing": "在工作坊门口收拾工具",
+		"current_action": null,
+		"body": {"困": "很困", "饿": "不饿", "累": "很累"},
+	}
+	packet["snapshot"]["nearby"] = []
+	packet["snapshot"]["place"] = {
+		"name": "工作坊",
+		"props": [],
+	}
+	return {
+		"id": "low_energy_rest",
+		"title": "疲惫时在继续工作与休息之间作生活化选择",
+		"wake_packet": packet,
+		"expected": {"handling": "replace_current"},
 	}
 
 
